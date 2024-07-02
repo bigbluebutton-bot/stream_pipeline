@@ -1,4 +1,4 @@
-from module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
+from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
 
 class Processing:
     def __init__(self, modules: list):
