@@ -1,6 +1,9 @@
+# main.py
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule
 from src.processing import ProcessingManager
 from prometheus_client import start_http_server
+import concurrent.futures
+import time
 
 # Start up the server to expose the metrics.
 start_http_server(8000)
@@ -53,14 +56,29 @@ post_modules = [
 
 manager = ProcessingManager(pre_modules, main_modules, post_modules)
 
-# Example data
-data = {"key": "value", "condition": False}
+# Function to execute the processing pipeline
+def process_data(data):
+    result, message, processed_data = manager.run(data)
+    print(result, message, processed_data)
 
-# Execute the processing pipeline
-result, message, processed_data = manager.execute(data)
-print(result, message, processed_data)
+# Example data
+data_list = [
+    {"key": "value1", "condition": False},
+    {"key": "value2", "condition": True},
+    {"key": "value3", "condition": False},
+    {"key": "value4", "condition": True},
+    {"key": "value5", "condition": False},
+    {"key": "value6", "condition": True},
+    {"key": "value7", "condition": False},
+    {"key": "value8", "condition": True},
+    {"key": "value9", "condition": False},
+    {"key": "value10", "condition": True},
+]
+
+# Using ThreadPoolExecutor for multithreading
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    futures = [executor.submit(process_data, data) for data in data_list]
 
 # Keep the main thread alive
-import time
 while True:
     time.sleep(1)

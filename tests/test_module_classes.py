@@ -54,7 +54,7 @@ class TestModules(unittest.TestCase):
         self.assertEqual(data, 3)
 
     def test_processing_manager(self):
-        result, message, data = self.processing_manager.execute(1)
+        result, message, data = self.processing_manager.run(1)
         self.assertTrue(result)
         self.assertEqual(message, "All processing succeeded")
         self.assertEqual(data, 4)
@@ -65,7 +65,7 @@ class TestModules(unittest.TestCase):
                 return False, "ERROR", data
 
         processing_manager = ProcessingManager([FailingModule()], [self.simple_module], [self.simple_module])
-        result, message, data = processing_manager.execute(1)
+        result, message, data = processing_manager.run(1)
         self.assertFalse(result)
         self.assertEqual(message, "Pre-processing failed: Module 0 (FailingModule) failed: ERROR")
         self.assertEqual(data, 1)
@@ -76,7 +76,7 @@ class TestModules(unittest.TestCase):
                 return False, "ERROR", data
 
         processing_manager = ProcessingManager([self.simple_module], [FailingModule()], [self.simple_module])
-        result, message, data = processing_manager.execute(1)
+        result, message, data = processing_manager.run(1)
         self.assertFalse(result)
         self.assertEqual(message, "Main processing failed: Module 0 (FailingModule) failed: ERROR")
         self.assertEqual(data, 2)
@@ -87,7 +87,7 @@ class TestModules(unittest.TestCase):
                 return False, "ERROR", data
 
         processing_manager = ProcessingManager([self.simple_module], [self.simple_module], [FailingModule()])
-        result, message, data = processing_manager.execute(1)
+        result, message, data = processing_manager.run(1)
         self.assertFalse(result)
         self.assertEqual(message, "Post-processing failed: Module 0 (FailingModule) failed: ERROR")
         self.assertEqual(data, 3)
