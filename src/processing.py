@@ -1,3 +1,4 @@
+import inspect
 from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
 
 class Processing:
@@ -5,7 +6,23 @@ class Processing:
         for module in modules:
             if not isinstance(module, Module):
                 raise TypeError(f"Module {module} is not a subclass of Module")
+            self._validate_execute_method(module)
         self.modules = modules
+
+    def _validate_execute_method(self, module):
+        execute_method = getattr(module, 'execute', None)
+        if execute_method is None:
+            raise TypeError(f"Module {module.__class__.__name__} does not have an 'execute' method")
+
+        # Check the method signature
+        signature = inspect.signature(execute_method)
+        parameters = list(signature.parameters.values())
+        if len(parameters) != 2 or parameters[0].name != 'self' or parameters[1].name != 'data':
+            raise TypeError(f"'execute' method of {module.__class__.__name__} must accept exactly one parameter 'data'")
+
+        # Check the return type
+        if signature.return_annotation != tuple:
+            raise TypeError(f"'execute' method of {module.__class__.__name__} must return a tuple (bool, message, data)")
 
     def execute(self, data):
         result_data = data
