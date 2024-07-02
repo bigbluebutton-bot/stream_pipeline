@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import final
 import time
 from prometheus_client import Summary
 
@@ -24,6 +25,7 @@ class ExecutionModule(Module):
         return True, "", data
 
 class ConditionModule(Module):
+    @final
     def __init__(self, true_module: Module, false_module: Module):
         self.true_module = true_module
         self.false_module = false_module
@@ -35,6 +37,7 @@ class ConditionModule(Module):
         """
         return True
 
+    @final
     def execute(self, data):
         if self.condition(data):
             try:
@@ -48,9 +51,11 @@ class ConditionModule(Module):
                 raise Exception(f"False module failed with error: {str(e)}")
 
 class CombinationModule(Module):
+    @final
     def __init__(self, modules: list):
         self.modules = modules
     
+    @final
     def execute(self, data):
         result_data = data
         for i, module in enumerate(self.modules):
