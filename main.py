@@ -1,5 +1,9 @@
-from src.module_classes import ExecutionModule, ConditionModule
+from src.module_classes import ExecutionModule, ConditionModule, CombinationModule
 from src.processing import ProcessingManager
+from prometheus_client import start_http_server
+
+# Start up the server to expose the metrics.
+start_http_server(8000)
 
 # Example custom modules
 class DataValidationModule(ExecutionModule):
@@ -29,13 +33,23 @@ class FailureModule(ExecutionModule):
         data["status"] = "failure"
         return True, "Condition false: failure", data
 
+class AlwaysTrue(ExecutionModule):
+    def execute(self, data):
+        return True, "Always true", data
+
 # Setting up the processing pipeline
 pre_modules = [DataValidationModule()]
 main_modules = [
     DataTransformationModule(),
     DataConditionModule(SuccessModule(), FailureModule())
 ]
-post_modules = []
+post_modules = [
+    CombinationModule([
+        CombinationModule([
+            AlwaysTrue(),
+        ]),
+    ])
+]
 
 manager = ProcessingManager(pre_modules, main_modules, post_modules)
 
@@ -45,3 +59,8 @@ data = {"key": "value", "condition": False}
 # Execute the processing pipeline
 result, message, processed_data = manager.execute(data)
 print(result, message, processed_data)
+
+# Keep the main thread alive
+import time
+while True:
+    time.sleep(1)

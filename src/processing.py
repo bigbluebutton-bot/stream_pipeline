@@ -1,5 +1,6 @@
 import inspect
-from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
+import time
+from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule, REQUEST_TIME
 
 class Processing:
     def __init__(self, modules: list):
@@ -23,16 +24,25 @@ class Processing:
     def execute(self, data):
         result_data = data
         for i, module in enumerate(self.modules):
+            module_name = module.__class__.__name__
+            start_time = time.time()
             try:
                 result = module.execute(result_data)
+                duration = time.time() - start_time
+                if module_name is not "CombinationModule":
+                    REQUEST_TIME.labels(module_name=module_name).observe(duration)
+
                 if not (isinstance(result, tuple) and len(result) == 3 and isinstance(result[0], bool) and isinstance(result[1], str)):
-                    raise TypeError(f"Module {i} ({module.__class__.__name__}) returned an invalid result. Expected (bool, str, any). Got {result}")
+                    raise TypeError(f"Module {i} ({module_name}) returned an invalid result. Expected (bool, str, any). Got {result}")
 
                 result, result_message, result_data = result
                 if not result:
-                    return False, f"Module {i} ({module.__class__.__name__}) failed: {result_message}", result_data
+                    return False, f"Module {i} ({module_name}) failed: {result_message}", result_data
             except Exception as e:
-                return False, f"Module {i} ({module.__class__.__name__}) failed with error: {str(e)}", result_data
+                duration = time.time() - start_time
+                if module_name is not "CombinationModule":
+                    REQUEST_TIME.labels(module_name=module_name).observe(duration)
+                return False, f"Module {i} ({module_name}) failed with error: {str(e)}", result_data
         return True, "Processing succeeded", result_data
 
 class ProcessingManager:
