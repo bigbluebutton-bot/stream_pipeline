@@ -1,5 +1,5 @@
+import threading
 import inspect
-import time
 from typing import List, Tuple, Any
 from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
 
@@ -8,13 +8,26 @@ class Processing:
     Class to manage and execute a sequence of modules.
     """
     def __init__(self, modules: List[Module]):
+        self.modulesMutex = threading.RLock()
+        self._modules = modules
+        try:
+            self.setModules(modules)
+        except Exception as e:
+            raise e
+
+    def setModules(self, modules: List[Module]):
+        """
+        Sets the modules for the processing sequence during runtime. Will apply on the next run.
+        """
         for module in modules:
             if not isinstance(module, Module):
                 raise TypeError(f"Module {module} is not a subclass of Module")
             self._validate_execute_method(module)
-        self.modules = modules
+        
+        with self.modulesMutex:
+            self._modules = modules
 
-    def _validate_execute_method(self, module) -> None:
+    def _validate_execute_method(self, module: Module) -> None:
         """
         Validates that the module has an execute method with the correct signature.
         """
@@ -25,15 +38,19 @@ class Processing:
         # Check the method signature
         signature = inspect.signature(execute_method)
         parameters = list(signature.parameters.values())
-        if len(parameters) != 1 and parameters[0].name != 'data':
+        if len(parameters) != 1 or parameters[0].name != 'data':
             raise TypeError(f"'execute' method of {module.__class__.__name__} must accept exactly one parameter 'data'")
 
-    def run(self, data) -> Tuple[bool, str, Any]:
+    def run(self, data: Any) -> Tuple[bool, str, Any]:
         """
         Runs the sequence of modules on the given data.
         """
+        modules_copy = None
+        with self.modulesMutex:
+            modules_copy = self._modules[:]
+        
         result_data = data
-        for i, module in enumerate(self.modules):
+        for i, module in enumerate(modules_copy):
             module_name = module.__class__.__name__
             try:
                 result = module.run(result_data)
@@ -52,12 +69,12 @@ class ProcessingManager:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
     """
-    def __init__(self, pre_modules: list, main_modules: list, post_modules: list):
+    def __init__(self, pre_modules: List[Module], main_modules: List[Module], post_modules: List[Module]):
         self.pre_processing = Processing(pre_modules)
         self.main_processing = Processing(main_modules)
         self.post_processing = Processing(post_modules)
 
-    def run(self, data) -> Tuple[bool, str, Any]:
+    def run(self, data: Any) -> Tuple[bool, str, Any]:
         """
         Executes the pre-processing, main processing, and post-processing stages sequentially.
         """
