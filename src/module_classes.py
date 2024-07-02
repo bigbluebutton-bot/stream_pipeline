@@ -1,25 +1,37 @@
+# module_classes.py
+
 from abc import ABC, abstractmethod
 import threading
 from typing import Any, List, Tuple, final
 import time
 from prometheus_client import Summary
 
-# Create a metric to track time spent and requests made.
+# Metrics to track time spent on processing modules
 REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
-REQUEST_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting bevore executing the task (mutex)', ['module_name'])
-REQUEST_TOTAL_TIME = Summary('module_total_seconds', 'Time spent processing module', ['module_name'])
+REQUEST_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['module_name'])
+REQUEST_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
 
 class Module(ABC):
+    """
+    Abstract base class for modules.
+    """
     _locks = {}
-    
+
     @property
     def mutex(self):
+        """
+        Provides a reentrant lock for each module instance.
+        """
         if id(self) not in self._locks:
-            self._locks[id(self)] = threading.RLock()  # Using RLock to allow reentrant locking
+            self._locks[id(self)] = threading.RLock()
         return self._locks[id(self)]
 
     @final
     def run(self, data) -> Tuple[bool, str, Any]:
+        """
+        Wrapper method that executes the module's main logic within a thread-safe context.
+        Measures and records the execution time and waiting time.
+        """
         start_total_time = time.time()
         self.mutex.acquire()
         REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
@@ -40,20 +52,26 @@ class Module(ABC):
     @abstractmethod
     def execute(self, data) -> Tuple[bool, str, Any]:
         """
-        This method should be overridden by subclasses.
-        It should perform an operation on the data input and return a tuple (bool, str, Any).
+        Abstract method to be implemented by subclasses.
+        Performs an operation on the data input and returns a tuple (bool, str, Any).
         """
         pass
 
 class ExecutionModule(Module):
+    """
+    Abstract class for modules that perform specific execution tasks.
+    """
     @abstractmethod
     def execute(self, data) -> Tuple[bool, str, Any]:
         """
-        This abstract method should be implemented by subclasses to execute specific code.
+        Method to be implemented by subclasses for specific execution logic.
         """
         return True, "", data
 
 class ConditionModule(Module):
+    """
+    Abstract class for modules that decide between two modules based on a condition.
+    """
     @final
     def __init__(self, true_module: Module, false_module: Module):
         self.true_module = true_module
@@ -62,12 +80,15 @@ class ConditionModule(Module):
     @abstractmethod
     def condition(self, data) -> bool:
         """
-        This abstract method should be implemented by subclasses to evaluate conditions based on the data input.
+        Abstract method to be implemented by subclasses to evaluate conditions based on data input.
         """
         return True
 
     @final
     def execute(self, data) -> Tuple[bool, str, Any]:
+        """
+        Executes the true_module if condition is met, otherwise executes the false_module.
+        """
         if self.condition(data):
             try:
                 return self.true_module.run(data)
@@ -80,15 +101,20 @@ class ConditionModule(Module):
                 raise Exception(f"False module failed with error: {str(e)}")
 
 class CombinationModule(Module):
+    """
+    Class for modules that combine multiple modules sequentially.
+    """
     @final
     def __init__(self, modules: List[Module]):
         self.modules = modules
     
     @final
     def execute(self, data) -> Tuple[bool, str, Any]:
+        """
+        Executes each module in the list sequentially, passing the output of one as the input to the next.
+        """
         result_data = data
         for i, module in enumerate(self.modules):
-            start_time = time.time()
             try:
                 result, result_message, result_data = module.run(result_data)
                 if not result:
