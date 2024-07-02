@@ -17,18 +17,18 @@ class Processing:
         # Check the method signature
         signature = inspect.signature(execute_method)
         parameters = list(signature.parameters.values())
-        if len(parameters) != 2 or parameters[0].name != 'self' or parameters[1].name != 'data':
+        if len(parameters) != 1 and parameters[1].name != 'data':
             raise TypeError(f"'execute' method of {module.__class__.__name__} must accept exactly one parameter 'data'")
-
-        # Check the return type
-        if signature.return_annotation != tuple:
-            raise TypeError(f"'execute' method of {module.__class__.__name__} must return a tuple (bool, message, data)")
 
     def execute(self, data):
         result_data = data
         for i, module in enumerate(self.modules):
             try:
-                result, result_message, result_data = module.execute(result_data)
+                result = module.execute(result_data)
+                if not (isinstance(result, tuple) and len(result) == 3 and isinstance(result[0], bool) and isinstance(result[1], str)):
+                    raise TypeError(f"Module {i} ({module.__class__.__name__}) returned an invalid result. Expected (bool, str, any). Got {result}")
+
+                result, result_message, result_data = result
                 if not result:
                     return False, f"Module {i} ({module.__class__.__name__}) failed: {result_message}", result_data
             except Exception as e:
