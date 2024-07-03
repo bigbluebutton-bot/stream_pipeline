@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 import threading
-from typing import Any, List, Tuple, final
+from typing import Any, List, Tuple, final, NamedTuple
 import time
 from prometheus_client import Summary
 
@@ -11,11 +11,20 @@ REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent proce
 REQUEST_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['module_name'])
 REQUEST_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
 
+class ModuleOptions(NamedTuple):
+    """
+    Named tuple to store options for modules.
+    """
+    use_mutex: bool = True
+
 class Module(ABC):
     """
     Abstract base class for modules.
     """
     _locks = {}
+
+    def __init__(self, options: ModuleOptions = ModuleOptions()):
+        self.use_mutex = options.use_mutex
 
     @property
     def mutex(self):
@@ -33,8 +42,9 @@ class Module(ABC):
         Measures and records the execution time and waiting time.
         """
         start_total_time = time.time()
-        self.mutex.acquire()
-        REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
+        if self.use_mutex:
+            self.mutex.acquire()
+            REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
 
         module_name = self.__class__.__name__
         start_time = time.time()
@@ -46,7 +56,8 @@ class Module(ABC):
             REQUEST_PROCESSING_TIME.labels(module_name=module_name).observe(time.time() - start_time)
             raise e
         finally:
-            self.mutex.release()
+            if self.use_mutex:
+                self.mutex.release()
             REQUEST_TOTAL_TIME.labels(module_name=module_name).observe(time.time() - start_total_time)
 
     @abstractmethod
@@ -57,7 +68,10 @@ class Module(ABC):
         """
         pass
 
-class ExecutionModule(Module):
+class ExecutionModule(Module, ABC):
+    def __init__(self, options: ModuleOptions = ModuleOptions()):
+        super().__init__(options)
+
     """
     Abstract class for modules that perform specific execution tasks.
     """
@@ -66,14 +80,15 @@ class ExecutionModule(Module):
         """
         Method to be implemented by subclasses for specific execution logic.
         """
-        return True, "", data
+        pass
 
-class ConditionModule(Module):
+class ConditionModule(Module, ABC):
     """
     Abstract class for modules that decide between two modules based on a condition.
     """
     @final
-    def __init__(self, true_module: Module, false_module: Module):
+    def __init__(self, true_module: Module, false_module: Module, options: ModuleOptions = ModuleOptions()):
+        super().__init__(options)
         self.true_module = true_module
         self.false_module = false_module
 
@@ -105,7 +120,8 @@ class CombinationModule(Module):
     Class for modules that combine multiple modules sequentially.
     """
     @final
-    def __init__(self, modules: List[Module]):
+    def __init__(self, modules: List[Module], options: ModuleOptions = ModuleOptions()):
+        super().__init__(options)
         self.modules = modules
     
     @final
