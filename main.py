@@ -1,4 +1,5 @@
 # main.py
+import random
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, ModuleOptions
 from src.processing import ProcessingManager
 from prometheus_client import start_http_server
@@ -18,11 +19,13 @@ class DataValidationModule(ExecutionModule):
 class DataTransformationModule(ExecutionModule):
     def __init__(self):
         super().__init__(ModuleOptions(
-            use_mutex=True,
+            use_mutex=False,
         ))
 
     def execute(self, data):
-        time.sleep(1)
+        list1 = [1, 2, 3, 4, 5, 6]
+        randomint = random.choice(list1)
+        time.sleep(randomint)
         if "key" in data:
             data["key"] = data["key"].upper()
             return True, "Transformation succeeded", data

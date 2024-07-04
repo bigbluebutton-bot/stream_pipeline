@@ -67,12 +67,12 @@ class Processing:
         return True, "Processing succeeded", result_data
 
 class Process:
-    def __init__(self, id: int, sequence_number_count: int, finished_sequence_number_count: int):
+    def __init__(self, id: int):
         self.id: int = id
-        self.sequence_number_count: int = sequence_number_count
-        self.finished_sequence_number_count: int = finished_sequence_number_count
-        self.stored_data: Dict[int, Any] = {} # This is data which is faster then the previous data in the processing pipeline
-        self.lock = threading.Lock()  # Mutex to protect shared resources
+        self.sequence_number_count: int = 0
+        self.finished_sequence_number_count: int = -1
+        self.stored_data: Dict[int, Any] = {}
+        self.lock = threading.Lock()
         
     def get_sequence_number(self) -> int:
         with self.lock:
@@ -97,7 +97,6 @@ class Process:
     def get_next_data(self) -> Any:
         with self.lock:
             data = self.stored_data.get(self.finished_sequence_number_count + 1)
-            # remove data from stored_data
             if data is not None:
                 del self.stored_data[self.finished_sequence_number_count + 1]
             return data
@@ -106,17 +105,26 @@ class ProcessingManager:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
     """
-    def __init__(self, pre_modules: List[Module], main_modules: List[Module], post_modules: List[Module]):
+    def __init__(self, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], max_workers: int = 10):
         self.pre_processing = Processing(pre_modules)
         self.main_processing = Processing(main_modules)
         self.post_processing = Processing(post_modules)
-        self.executor = ThreadPoolExecutor(max_workers=5)
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.process_map: Dict[int, Process] = {}
 
     def run(self, data: Any, callback: Callable[[bool, str, Any], None]) -> None:
         """
         Executes the pre-processing, main processing, and post-processing stages sequentially.
         """
-        def execute() -> None:
+        
+        # Get process from self.process_map or add it by str(id(callback)) as id
+        process = self.process_map.get(id(callback))
+        if process is None:
+            process = Process(id(callback))
+            self.process_map[id(callback)] = process
+        
+        
+        def execute(sequence_number: int) -> None:
             pre_result, pre_message, pre_data = self.pre_processing.run(data)
             if not pre_result:
                 callback(False, f"Pre-processing failed: {pre_message}", pre_data)
@@ -131,11 +139,21 @@ class ProcessingManager:
             if not post_result:
                 callback(False, f"Post-processing failed: {post_message}", post_data)
                 return
+            
+            print(post_data["key"])
 
-            callback(True, "All processing succeeded", post_data)
+            process.store_data(sequence_number, post_data)
+            while True:
+                next_data = process.get_next_data()
+                if next_data is None:
+                    break
+                callback(True, "All processing succeeded", next_data)
+                process.increase_finished_sequence_number()
 
-        self.executor.submit(execute)
-        print("Task submitted")
+        sequence_number = process.get_sequence_number()
+        process.increase_sequence_number()
+        self.executor.submit(execute, sequence_number)
+        print(f"Task {sequence_number} submitted")
 
     def shutdown(self):
         self.executor.shutdown(wait=False)
