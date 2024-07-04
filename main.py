@@ -89,6 +89,11 @@ data_list = [
 for d in data_list:
     process_data(d)
 
+# # Using ThreadPoolExecutor for multithreading
+# with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+#     futures = [executor.submit(process_data, data) for data in data_list]
+
+
 # Keep the main thread alive
 # while True:
 #     time.sleep(1)
