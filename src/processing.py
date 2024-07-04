@@ -161,7 +161,7 @@ class ProcessingManager:
 
             if not self.multithreading:
                 print(f"Task completed")
-                callback(True, "All processing succeeded", post_result)
+                callback(True, "All processing succeeded", post_data)
                 return
             
             print(f"Task {sequence_number} completed")
