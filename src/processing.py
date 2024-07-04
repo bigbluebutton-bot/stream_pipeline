@@ -1,6 +1,6 @@
 import threading
 import inspect
-from typing import List, Tuple, Any
+from typing import Callable, List, Tuple, Any
 from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
 
 class Processing:
@@ -74,20 +74,24 @@ class ProcessingManager:
         self.main_processing = Processing(main_modules)
         self.post_processing = Processing(post_modules)
 
-    def run(self, data: Any) -> Tuple[bool, str, Any]:
+    def run(self, data: Any, callback: Callable[[bool, str, Any], None]) -> None:
         """
         Executes the pre-processing, main processing, and post-processing stages sequentially.
         """
         pre_result, pre_message, pre_data = self.pre_processing.run(data)
         if not pre_result:
-            return False, f"Pre-processing failed: {pre_message}", pre_data
+            callback(False, f"Pre-processing failed: {pre_message}", pre_data)
+            return
 
         main_result, main_message, main_data = self.main_processing.run(pre_data)
         if not main_result:
-            return False, f"Main processing failed: {main_message}", main_data
+            callback(False, f"Main processing failed: {main_message}", main_data)
+            return
 
         post_result, post_message, post_data = self.post_processing.run(main_data)
         if not post_result:
-            return False, f"Post-processing failed: {post_message}", post_data
+            callback(False, f"Post-processing failed: {post_message}", post_data)
+            return
 
-        return True, "All processing succeeded", post_data
+        callback(True, "All processing succeeded", post_data)
+        return

@@ -1,5 +1,5 @@
 # main.py
-from src.module_classes import ExecutionModule, ConditionModule, CombinationModule
+from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, ModuleOptions
 from src.processing import ProcessingManager
 from prometheus_client import start_http_server
 import concurrent.futures
@@ -16,7 +16,13 @@ class DataValidationModule(ExecutionModule):
         return False, "Validation failed: key missing", data
 
 class DataTransformationModule(ExecutionModule):
+    def __init__(self):
+        super().__init__(ModuleOptions(
+            use_mutex=False,
+        ))
+
     def execute(self, data):
+        time.sleep(1)
         if "key" in data:
             data["key"] = data["key"].upper()
             return True, "Transformation succeeded", data
@@ -56,10 +62,12 @@ post_modules = [
 
 manager = ProcessingManager(pre_modules, main_modules, post_modules)
 
+def callback(result, message, processed_data):
+    print(result, message, processed_data)
+
 # Function to execute the processing pipeline
 def process_data(data):
-    result, message, processed_data = manager.run(data)
-    print(result, message, processed_data)
+    manager.run(data, callback)
 
 # Example data
 data_list = [
@@ -76,7 +84,7 @@ data_list = [
 ]
 
 # Using ThreadPoolExecutor for multithreading
-with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
     futures = [executor.submit(process_data, data) for data in data_list]
 
 # Keep the main thread alive
