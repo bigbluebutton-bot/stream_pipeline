@@ -140,7 +140,7 @@ class ProcessingManager:
                 callback(False, f"Post-processing failed: {post_message}", post_data)
                 return
             
-            print(post_data["key"])
+            print(f"Task {sequence_number} completed")
 
             process.store_data(sequence_number, post_data)
             while True:
