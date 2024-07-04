@@ -1,11 +1,19 @@
 from concurrent.futures import Future, ThreadPoolExecutor
 import threading
 import inspect
+import time
 from typing import Callable, Dict, List, Tuple, Any
 
 from enum import Enum
-from prometheus_client import Summary
+from prometheus_client import Gauge, Summary
 from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
+
+# Metrics to track time spent on processing modules
+TOTAL_PROCESSING_TIME = Summary('total_processing_seconds', 'Total time spent processing all modules', ['pipeline_name'])
+TOTAL_PIPELINE_TIME = Summary('total_pipeline_seconds', 'Total time spent processing the pipeline', ['pipeline_name'])
+PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of tasks currently being processed', ['pipeline_name'])
+PIPELINE_WAITING_COUNTER = Gauge('pipeline_waiting_counter', 'Number of tasks waiting to be executed', ['pipeline_name'])
+PIPELINE_WAITING_TIME = Summary('pipeline_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['pipeline_name'])
 
 class Processing:
     """
@@ -77,6 +85,8 @@ class Process:
         self.stored_data: Dict[int, Any] = {}
         self.lock = threading.Lock()
         
+        self.previous_modules_to_finish_time = None
+        
     def get_sequence_number(self) -> int:
         with self.lock:
             return self.sequence_number_count
@@ -117,7 +127,8 @@ class ProcessingManager:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
     """
-    def __init__(self, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], max_workers: int = 10, mode: ProcessingMode = ProcessingMode.ORDER_BY_SEQUENCE):
+    def __init__(self, name: str, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], max_workers: int = 10, mode: ProcessingMode = ProcessingMode.ORDER_BY_SEQUENCE):
+        self.name = name
         self.pre_processing = Processing(pre_modules)
         self.main_processing = Processing(main_modules)
         self.post_processing = Processing(post_modules)
@@ -152,8 +163,14 @@ class ProcessingManager:
             process = Process(id(callback))
             self.process_map[id(callback)] = process
         
+        waiting_time = time.time()
         
         def execute(sequence_number: int) -> None:
+            PIPELINE_WAITING_TIME.labels(pipeline_name=self.name).observe(time.time()-waiting_time)
+            PIPELINE_WAITING_COUNTER.labels(pipeline_name=self.name).dec()
+            PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self.name).inc()
+            start_time = time.time()
+            
             pre_result, pre_message, pre_data = self.pre_processing.run(data)
             if not pre_result:
                 callback(False, f"Pre-processing failed: {pre_message}", pre_data)
@@ -169,41 +186,44 @@ class ProcessingManager:
                 callback(False, f"Post-processing failed: {post_message}", post_data)
                 return
 
+            TOTAL_PROCESSING_TIME.labels(pipeline_name=self.name).observe(time.time()-start_time)
+
             if not self.multithreading:
                 print(f"Task completed")
                 callback(True, "All processing succeeded", post_data)
-                return
-            
-            print(f"Task {sequence_number} completed")
-            
-            with self.callback_lock:
-                if self.mode == ProcessingMode.NO_ORDER:
-                    callback(True, "All processing succeeded", post_data)
-                    return
+            else:
+                print(f"Task {sequence_number} completed")
                 
-                elif self.mode == ProcessingMode.ORDER_BY_SEQUENCE:
-                    process.store_data(sequence_number, post_data)
-                    while True:
-                        next_data = process.get_next_data()
-                        if next_data is None:
-                            break
-                        callback(True, "All processing succeeded", next_data)
-                        process.increase_finished_sequence_number()
-
-                elif self.mode == ProcessingMode.FIRST_WINS:
-                    if sequence_number > process.get_finished_sequence_number():
+                with self.callback_lock:
+                    if self.mode == ProcessingMode.NO_ORDER:
                         callback(True, "All processing succeeded", post_data)
-                        process.set_finished_sequence_number(sequence_number)
-                        del self.active_futures[sequence_number]
-                        for key, value in list(self.active_futures.items()):
-                            if key <= sequence_number:
-                                if future.running():
-                                    running = value.cancel()
-                                    if running:
-                                        print(f"Cancel task {key}")
-                                    else:
-                                        print(f"Can not cancel task {key}. Already running")
-                                del self.active_futures[key]
+                    
+                    elif self.mode == ProcessingMode.ORDER_BY_SEQUENCE:
+                        process.store_data(sequence_number, post_data)
+                        while True:
+                            next_data = process.get_next_data()
+                            if next_data is None:
+                                break
+                            callback(True, "All processing succeeded", next_data)
+                            process.increase_finished_sequence_number()
+
+                    elif self.mode == ProcessingMode.FIRST_WINS:
+                        if sequence_number > process.get_finished_sequence_number():
+                            callback(True, "All processing succeeded", post_data)
+                            process.set_finished_sequence_number(sequence_number)
+                            del self.active_futures[sequence_number]
+                            for key, value in list(self.active_futures.items()):
+                                if key <= sequence_number:
+                                    if future.running():
+                                        running = value.cancel()
+                                        if running:
+                                            print(f"Cancel task {key}")
+                                        else:
+                                            print(f"Can not cancel task {key}. Already running")
+                                    del self.active_futures[key]
+                                
+            PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self.name).dec()
+            TOTAL_PIPELINE_TIME.labels(pipeline_name=self.name).observe(time.time()-start_time)
 
         if not self.multithreading:
             execute(-1)
@@ -211,6 +231,7 @@ class ProcessingManager:
 
         sequence_number = process.get_sequence_number()
         process.increase_sequence_number()
+        PIPELINE_WAITING_COUNTER.labels(pipeline_name=self.name).inc()
         future = self.executor.submit(execute, sequence_number)
         if self.mode == ProcessingMode.FIRST_WINS:
             self.active_futures[sequence_number] = future

@@ -4,12 +4,13 @@ from abc import ABC, abstractmethod
 import threading
 from typing import Any, List, Tuple, final, NamedTuple
 import time
-from prometheus_client import Summary
+from prometheus_client import Gauge, Summary
 
 # Metrics to track time spent on processing modules
 REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
 REQUEST_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['module_name'])
 REQUEST_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
+REQUEST_WAITING_COUNTER = Gauge('module_waiting_counter', 'Number of processes waiting to execute the task (mutex)', ['module_name'])
 
 class ModuleOptions(NamedTuple):
     """
@@ -43,8 +44,10 @@ class Module(ABC):
         """
         start_total_time = time.time()
         if self.use_mutex:
+            REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).inc()
             self.mutex.acquire()
             REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
+            REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
         module_name = self.__class__.__name__
         start_time = time.time()

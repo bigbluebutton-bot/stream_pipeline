@@ -63,7 +63,7 @@ post_modules = [
     ])
 ]
 
-manager = ProcessingManager(pre_modules, main_modules, post_modules)
+manager = ProcessingManager("test-pipeline", pre_modules, main_modules, post_modules)
 
 def callback(result, message, processed_data):
     print(result, message, processed_data)
@@ -95,5 +95,5 @@ for d in data_list:
 
 
 # Keep the main thread alive
-# while True:
-#     time.sleep(1)
+while True:
+    time.sleep(1)
