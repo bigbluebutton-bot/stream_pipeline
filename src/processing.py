@@ -131,6 +131,15 @@ class ProcessingManager:
         self.callback_lock = threading.Lock()
         self.active_futures: Dict[int, Future] = {}
 
+    def setPreModules(self, modules: List[Any]) -> None:
+        self.pre_processing.setModules(modules)
+        
+    def setMainModules(self, modules: List[Any]) -> None:
+        self.main_processing.setModules(modules)
+        
+    def setPostModules(self, modules: List[Any]) -> None:
+        self.post_processing.setModules(modules)
+
     def run(self, data: Any, callback: Callable[[bool, str, Any], None]) -> None:
         """
         Executes the pre-processing, main processing, and post-processing stages sequentially.
