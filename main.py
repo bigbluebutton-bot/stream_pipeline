@@ -74,6 +74,7 @@ def process_data(data):
 
 # Example data
 data_list = [
+    {"key": "value0", "condition": True},
     {"key": "value1", "condition": False},
     {"key": "value2", "condition": True},
     {"key": "value3", "condition": False},
@@ -83,12 +84,11 @@ data_list = [
     {"key": "value7", "condition": False},
     {"key": "value8", "condition": True},
     {"key": "value9", "condition": False},
-    {"key": "value10", "condition": True},
 ]
 
 for d in data_list:
     process_data(d)
 
 # Keep the main thread alive
-while True:
-    time.sleep(1)
+# while True:
+#     time.sleep(1)

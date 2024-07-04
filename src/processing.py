@@ -105,10 +105,11 @@ class ProcessingManager:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
     """
-    def __init__(self, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], max_workers: int = 10):
+    def __init__(self, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], multithreading: bool = True, max_workers: int = 10):
         self.pre_processing = Processing(pre_modules)
         self.main_processing = Processing(main_modules)
         self.post_processing = Processing(post_modules)
+        self.multithreading = multithreading
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.process_map: Dict[int, Process] = {}
 
@@ -139,9 +140,14 @@ class ProcessingManager:
             if not post_result:
                 callback(False, f"Post-processing failed: {post_message}", post_data)
                 return
+
+            if not self.multithreading:
+                print(f"Task completed")
+                callback(True, "All processing succeeded", post_result)
+                return
             
             print(f"Task {sequence_number} completed")
-
+            
             process.store_data(sequence_number, post_data)
             while True:
                 next_data = process.get_next_data()
@@ -149,6 +155,10 @@ class ProcessingManager:
                     break
                 callback(True, "All processing succeeded", next_data)
                 process.increase_finished_sequence_number()
+
+        if not self.multithreading:
+            execute(-1)
+            return
 
         sequence_number = process.get_sequence_number()
         process.increase_sequence_number()
