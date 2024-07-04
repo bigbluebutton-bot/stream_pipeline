@@ -1,54 +1,84 @@
+# main.py
+from src.module_classes import ExecutionModule, ConditionModule, CombinationModule
+from src.processing import ProcessingManager
+from prometheus_client import start_http_server
+import concurrent.futures
 import time
-from extract_ogg import split_ogg_data_into_frames, OggSFrame
 
-def speech_to_text(data):
-    # Placeholder for the actual speech-to-text function
-    print(f"Processing {len(data)} bytes of audio data")
+# Start up the server to expose the metrics.
+start_http_server(8000)
 
-def calculate_frame_duration(current_granule_position, previous_granule_position, sample_rate=48000):
-    if previous_granule_position is None:
-        return 0.02  # Default value for the first frame
-    samples = current_granule_position - previous_granule_position
-    duration = samples / sample_rate
-    return duration
+# Example custom modules
+class DataValidationModule(ExecutionModule):
+    def execute(self, data):
+        if isinstance(data, dict) and "key" in data:
+            return True, "Validation succeeded", data
+        return False, "Validation failed: key missing", data
 
-def simulate_live_audio_stream(file_path, sample_rate=48000):
-    with open(file_path, 'rb') as file:
-        ogg_bytes = file.read()
+class DataTransformationModule(ExecutionModule):
+    def execute(self, data):
+        if "key" in data:
+            data["key"] = data["key"].upper()
+            return True, "Transformation succeeded", data
+        return False, "Transformation failed: key missing", data
 
-    frames = split_ogg_data_into_frames(ogg_bytes)
-    audio_data_buffer = []
-    previous_granule_position = None
-    start_time = time.time()
+class DataConditionModule(ConditionModule):
+    def condition(self, data):
+        return "condition" in data and data["condition"] == True
 
-    for frame_index, frame in enumerate(frames):
-        current_granule_position = frame.header['granule_position']
-        frame_duration = calculate_frame_duration(current_granule_position, previous_granule_position, sample_rate)
-        previous_granule_position = current_granule_position
+class SuccessModule(ExecutionModule):
+    def execute(self, data):
+        data["status"] = "success"
+        return True, "Condition true: success", data
 
-        audio_data_buffer.append(frame.raw_data)
+class FailureModule(ExecutionModule):
+    def execute(self, data):
+        data["status"] = "failure"
+        return True, "Condition false: failure", data
 
-        # Sleep to simulate real-time audio playback
-        time.sleep(frame_duration)
+class AlwaysTrue(ExecutionModule):
+    def execute(self, data):
+        return True, "Always true", data
 
-        # Every second, process the last 10 seconds of audio
-        if frame_duration > 0 and (frame_index + 1) % int(1 / frame_duration) == 0:
-            current_time = time.time()
-            elapsed_time = current_time - start_time
+# Setting up the processing pipeline
+pre_modules = [DataValidationModule()]
+main_modules = [
+    DataTransformationModule(),
+    DataConditionModule(SuccessModule(), FailureModule())
+]
+post_modules = [
+    CombinationModule([
+        CombinationModule([
+            AlwaysTrue(),
+        ]),
+    ])
+]
 
-            if elapsed_time > 10:
-                start_time += 1  # Move the window forward by 1 second
+manager = ProcessingManager(pre_modules, main_modules, post_modules)
 
-            # Combine the last 10 seconds of audio data
-            ten_seconds_of_audio = b''.join(audio_data_buffer[-int(10 / frame_duration):])
-            speech_to_text(ten_seconds_of_audio)
+# Function to execute the processing pipeline
+def process_data(data):
+    result, message, processed_data = manager.run(data)
+    print(result, message, processed_data)
 
-if __name__ == "__main__":
-    # Path to the Ogg file
-    file_path = './audio/bbb.ogg'
-    start_time = time.time()
-    simulate_live_audio_stream(file_path)
-    end_time = time.time()
-    
-    execution_time = end_time - start_time
-    print(f"Execution time: {execution_time} seconds")
+# Example data
+data_list = [
+    {"key": "value1", "condition": False},
+    {"key": "value2", "condition": True},
+    {"key": "value3", "condition": False},
+    {"key": "value4", "condition": True},
+    {"key": "value5", "condition": False},
+    {"key": "value6", "condition": True},
+    {"key": "value7", "condition": False},
+    {"key": "value8", "condition": True},
+    {"key": "value9", "condition": False},
+    {"key": "value10", "condition": True},
+]
+
+# Using ThreadPoolExecutor for multithreading
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    futures = [executor.submit(process_data, data) for data in data_list]
+
+# Keep the main thread alive
+while True:
+    time.sleep(1)
