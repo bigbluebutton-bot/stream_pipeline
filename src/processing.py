@@ -1,6 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import inspect
-from typing import Callable, List, Tuple, Any
+from typing import Callable, Dict, List, Tuple, Any
 from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
 
 class Processing:
@@ -65,6 +66,42 @@ class Processing:
                 return False, f"Module {i} ({module_name}) failed with error: {str(e)}", result_data
         return True, "Processing succeeded", result_data
 
+class Process:
+    def __init__(self, id: int, sequence_number_count: int, finished_sequence_number_count: int):
+        self.id: int = id
+        self.sequence_number_count: int = sequence_number_count
+        self.finished_sequence_number_count: int = finished_sequence_number_count
+        self.stored_data: Dict[int, Any] = {} # This is data which is faster then the previous data in the processing pipeline
+        self.lock = threading.Lock()  # Mutex to protect shared resources
+        
+    def get_sequence_number(self) -> int:
+        with self.lock:
+            return self.sequence_number_count
+    
+    def get_finished_sequence_number(self) -> int:
+        with self.lock:
+            return self.finished_sequence_number_count
+        
+    def increase_sequence_number(self):
+        with self.lock:
+            self.sequence_number_count += 1
+        
+    def increase_finished_sequence_number(self):
+        with self.lock:
+            self.finished_sequence_number_count += 1
+        
+    def store_data(self, sequence_number: int, data: Any):
+        with self.lock:
+            self.stored_data[sequence_number] = data
+        
+    def get_next_data(self) -> Any:
+        with self.lock:
+            data = self.stored_data.get(self.finished_sequence_number_count + 1)
+            # remove data from stored_data
+            if data is not None:
+                del self.stored_data[self.finished_sequence_number_count + 1]
+            return data
+
 class ProcessingManager:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
@@ -73,25 +110,34 @@ class ProcessingManager:
         self.pre_processing = Processing(pre_modules)
         self.main_processing = Processing(main_modules)
         self.post_processing = Processing(post_modules)
+        self.executor = ThreadPoolExecutor(max_workers=5)
 
     def run(self, data: Any, callback: Callable[[bool, str, Any], None]) -> None:
         """
         Executes the pre-processing, main processing, and post-processing stages sequentially.
         """
-        pre_result, pre_message, pre_data = self.pre_processing.run(data)
-        if not pre_result:
-            callback(False, f"Pre-processing failed: {pre_message}", pre_data)
-            return
+        def execute() -> None:
+            pre_result, pre_message, pre_data = self.pre_processing.run(data)
+            if not pre_result:
+                callback(False, f"Pre-processing failed: {pre_message}", pre_data)
+                return
 
-        main_result, main_message, main_data = self.main_processing.run(pre_data)
-        if not main_result:
-            callback(False, f"Main processing failed: {main_message}", main_data)
-            return
+            main_result, main_message, main_data = self.main_processing.run(pre_data)
+            if not main_result:
+                callback(False, f"Main processing failed: {main_message}", main_data)
+                return
 
-        post_result, post_message, post_data = self.post_processing.run(main_data)
-        if not post_result:
-            callback(False, f"Post-processing failed: {post_message}", post_data)
-            return
+            post_result, post_message, post_data = self.post_processing.run(main_data)
+            if not post_result:
+                callback(False, f"Post-processing failed: {post_message}", post_data)
+                return
 
-        callback(True, "All processing succeeded", post_data)
-        return
+            callback(True, "All processing succeeded", post_data)
+
+        self.executor.submit(execute)
+        print("Task submitted")
+
+    def shutdown(self):
+        self.executor.shutdown(wait=False)
+        print("Executor shutdown")
+        

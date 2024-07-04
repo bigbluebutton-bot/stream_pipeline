@@ -18,7 +18,7 @@ class DataValidationModule(ExecutionModule):
 class DataTransformationModule(ExecutionModule):
     def __init__(self):
         super().__init__(ModuleOptions(
-            use_mutex=False,
+            use_mutex=True,
         ))
 
     def execute(self, data):
@@ -83,9 +83,8 @@ data_list = [
     {"key": "value10", "condition": True},
 ]
 
-# Using ThreadPoolExecutor for multithreading
-with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-    futures = [executor.submit(process_data, data) for data in data_list]
+for d in data_list:
+    process_data(d)
 
 # Keep the main thread alive
 while True:
