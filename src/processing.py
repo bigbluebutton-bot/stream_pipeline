@@ -3,7 +3,8 @@ import threading
 import inspect
 from typing import Callable, Dict, List, Tuple, Any
 
-from prometheus_client import Enum
+from enum import Enum
+from prometheus_client import Summary
 from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
 
 class Processing:
