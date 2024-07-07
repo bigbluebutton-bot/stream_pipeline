@@ -41,7 +41,9 @@ stateDiagram-v2
             Module1 --> [*]
         }
         
-        PreProcessing --> MainProcessing
+        PreProcessing --> MainProcessing: 0
+        PreProcessing --> MainProcessing: 1
+        PreProcessing --> MainProcessing: (n+1)
         
         state MainProcessing {
             [*] --> Module2: Start Main-Processing
@@ -53,7 +55,9 @@ stateDiagram-v2
             Module2 --> [*]
         }
         
-        MainProcessing --> PostProcessing
+        MainProcessing --> PostProcessing: 0
+        MainProcessing --> PostProcessing: 1
+        MainProcessing --> PostProcessing: (n+1)
         
         state PostProcessing {
             [*] --> Module3: Start Post-Processing
@@ -78,3 +82,4 @@ stateDiagram-v2
 
 
 ```
+
