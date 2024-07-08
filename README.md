@@ -119,3 +119,97 @@ stateDiagram-v2
 
 
 ```
+
+# Modules
+## ExecutionModule
+```mermaid
+stateDiagram-v2
+    [*] --> ExecutionModule
+
+    state ExecutionModule {
+        [*] --> ExecuteCode
+        ExecuteCode --> [*]
+    }
+
+    ExecutionModule --> [*]
+```
+
+## ConditionModule
+```mermaid
+stateDiagram-v2
+    [*] --> ConditionModule
+
+
+    state ConditionModule {
+        state if_state <<choice>>
+        [*] --> ConditionCode
+        ConditionCode --> if_state
+        if_state --> TrueModule: If condition is true
+        if_state --> FalseModule : If condition is false
+
+        TrueModule --> [*]
+        FalseModule --> [*]
+    }
+
+    ConditionModule --> [*]
+```
+
+## CombinationModule
+```mermaid
+stateDiagram-v2
+    [*] --> CombinationModule
+
+    state CombinationModule {
+        [*] --> Module0: Start Processing
+
+        state Module0 {
+            [*] --> ExecuteCode0
+            ExecuteCode0 --> [*]
+        }
+
+        Module0 --> Module1
+
+        state Module1 {
+            [*] --> ExecuteCode1
+            ExecuteCode1 --> [*]
+        }
+
+        Module1 --> Module...n
+
+        state Module...n {
+            [*] --> ExecuteCode...n
+            ExecuteCode...n --> [*]
+        }
+
+        Module...n --> [*]
+    }
+
+    CombinationModule --> [*]
+```
+
+## ExternalPipelineModule
+```mermaid
+stateDiagram-v2
+    state Server0 {
+        state Pipeline0 {
+            state ExternalPipelineModule {
+                [*] --> StartExecuteCodeOnExternalPipeline1
+                EndExecuteCodeOnExternalPipeline1 --> [*]
+            }
+        }
+    }
+
+    state Server1 {
+        StartPipeline1 --> Pipeline1
+        state Pipeline1 {
+            [*] --> PreProcessing
+            PreProcessing --> MainProcessing
+            MainProcessing --> PostProcessing
+            PostProcessing --> [*]
+        }
+        Pipeline1 --> EndPipeline1
+    }
+
+    StartExecuteCodeOnExternalPipeline1 --> StartPipeline1
+    EndPipeline1 --> EndExecuteCodeOnExternalPipeline1
+```
