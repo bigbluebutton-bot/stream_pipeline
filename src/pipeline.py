@@ -12,6 +12,14 @@ from .module_classes import Module
 
 @dataclass
 class DataPackage:
+    """
+    Class which contains the data and metadata for a pipeline process and will be passed through the pipeline and between modules.
+    Attributes:
+        id (str): Unique identifier for the data package.
+        pipeline_executer_id (str): ID of the pipeline executor handling this package.
+        sequence_number (int): The sequence number of the data package.
+        data (Any): The actual data contained in the package.
+    """
     id: str
     pipeline_executer_id: str
     sequence_number: int
@@ -21,6 +29,9 @@ class DataPackage:
 class PipelineProcessingPhase:
     """
     Class to manage and execute a sequence of modules.
+    Args:
+        modules (List[Module]): List of modules to execute.
+        name (str): Name of the processing phase. (Default: PPP-{id})
     """
     def __init__(self, modules: List[Module], name: str = "") -> None:
         self._id = f"PPP-{uuid.uuid4()}"
@@ -28,14 +39,24 @@ class PipelineProcessingPhase:
         self._modules = modules.copy()
 
     def get_id(self) -> str:
+        """
+        Returns the unique identifier of the processing phase.
+        """
         return self._id
 
     def get_name(self) -> str:
+        """
+        Returns the name of the processing phase.
+        """
         return self._name
 
     def run(self, data_package: DataPackage) -> Tuple[bool, str, DataPackage]:
         """
         Executes the pipeline processing phase with the given data package.
+        Args:
+            data_package (DataPackage): The data package to process.
+        Returns:
+            Tuple[bool, str, DataPackage]: Success flag, message, and the processed data package.
         """
         data = data_package.data
         for module in self._modules:
@@ -52,7 +73,9 @@ class PipelineProcessingPhase:
 
 class PipelineExecutor:
     """
-    Class to manage the execution of a pipeline process by creating DataPackages and executing the PipelineProcessingPhases.
+    Class to manage the execution of a pipeline by creating DataPackages and executing the PipelineProcessingPhases. Also keeps track of the order of the data packages.
+    Args:
+        name (str): Name of the pipeline executor. (Default: PE-{id})
     """
     
     def __init__(self, name: str = "") -> None:
@@ -67,15 +90,29 @@ class PipelineExecutor:
         self._lock = threading.Lock()
 
     def get_id(self) -> str:
+        """
+        Returns the unique identifier of the pipeline executor.
+        """
         return self._id
 
     def get_name(self) -> str:
+        """
+        Returns the name of the pipeline executor.
+        """
         return self._name
 
     def get_last_finished_sequence_number(self) -> int:
+        """
+        Returns the last finished sequence number.
+        """
         return self._last_finished_sequence_number
 
     def set_last_finished_sequence_number(self, sequence_number: int) -> None:
+        """
+        Sets the last finished sequence number.
+        Args:
+            sequence_number (int): The sequence number to set as the last finished.
+        """
         if sequence_number >= self._next_sequence_number or sequence_number < self._last_finished_sequence_number:
             raise ValueError("Sequence number cannot be greater or equal than the next sequence number or smaller than the last finished sequence number.")
         self._last_finished_sequence_number = sequence_number
@@ -83,6 +120,11 @@ class PipelineExecutor:
     def run(self, pipeline_processing_phases: List[PipelineProcessingPhase], sequence_number: int) -> Tuple[bool, str, DataPackage]:
         """
         Executes the pipeline process with the given data package.
+        Args:
+            pipeline_processing_phases (List[PipelineProcessingPhase]): List of processing phases to execute.
+            sequence_number (int): The sequence number of the data package to process.
+        Returns:
+            Tuple[bool, str, DataPackage]: Success flag, message, and the processed data package.
         """
         with self._lock:
             data_package = self._data_packages.get(sequence_number)
@@ -97,6 +139,13 @@ class PipelineExecutor:
         return True, "All pipeline phases succeeded", result
 
     def add_data(self, data: Any) -> DataPackage:
+        """
+        Adds a new data package to the executor.
+        Args:
+            data (Any): The data to include in the new data package.
+        Returns:
+            DataPackage: The newly created data package.
+        """
         with self._lock:
             data_package = DataPackage(
                 id= "DP-" + str(uuid.uuid4()),
@@ -109,6 +158,11 @@ class PipelineExecutor:
             return data_package
 
     def remove_data(self, sequence_number: int) -> None:
+        """
+        Removes a data package based on its sequence number.
+        Args:
+            sequence_number (int): The sequence number of the data package to remove.
+        """
         with self._lock:
             self._data_packages.pop(sequence_number, None)
             self._finished_data_packages.pop(sequence_number, None)
@@ -116,6 +170,8 @@ class PipelineExecutor:
     def push_finished_data_package(self, sequence_number: int) -> None:
         """
         Pushes a data package to the finished queue based on its sequence number.
+        Args:
+            sequence_number (int): The sequence number of the data package to push to the finished queue.
         """
         with self._lock:
             if sequence_number in self._data_packages:
@@ -129,6 +185,8 @@ class PipelineExecutor:
             Queue: [1, 2, 5, 6, 7]
                 -> Returns: [1, 2]
             Queue left: [5, 6, 7]
+        Returns:
+            Dict[uuid.UUID, DataPackage]: Dictionary of finished data packages.
         """
         with self._lock:
             finished_data_packages = {}
@@ -144,6 +202,13 @@ class PipelineExecutor:
 
 
 class PipelineMode(Enum):
+    """
+    Enum to define different modes of pipeline execution.
+    Values:
+        ORDER_BY_SEQUENCE: Orders at the end all DataPackages by how they were added at the beginning of the pipeline.
+        FIRST_WINS: First DataPackage that finishes is the one that is returned. All others are discarded.
+        NO_ORDER: No specific order for the DataPackages. They are returned as they finish.
+    """
     ORDER_BY_SEQUENCE = 1
     FIRST_WINS = 2
     NO_ORDER = 3
@@ -152,6 +217,13 @@ class PipelineMode(Enum):
 class Pipeline:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
+    Args:
+        pre_modules (List[Module]): List of pre-processing modules.
+        main_modules (List[Module]): List of main processing modules.
+        post_modules (List[Module]): List of post-processing modules.
+        name (str): Name of the pipeline. (Default: P-{id})
+        max_workers (int): Maximum number of worker threads. If 0, no threads are used. That means the pipeline and the callback function will run in the main thread. This can block the main thread. (Default: 10)
+        mode (PipelineMode): The mode of pipeline execution. (ORDER_BY_SEQUENCE, FIRST_WINS, NO_ORDER) (Default: PipelineMode.ORDER_BY_SEQUENCE)
     """
     def __init__(self, pre_modules: List[Module], main_modules: List[Module], post_modules: List[Module], name: str = "", max_workers: int = 10, mode: PipelineMode = PipelineMode.ORDER_BY_SEQUENCE) -> None:
         self._id: str = f"P-{uuid.uuid4()}"
@@ -168,35 +240,69 @@ class Pipeline:
         self.executor = ThreadPoolExecutor(max_workers=max_workers) if max_workers > 0 else None
 
     def get_id(self) -> str:
+        """
+        Returns the unique identifier of the pipeline.
+        """
         return self._id
 
     def get_name(self) -> str:
+        """
+        Returns the name of the pipeline.
+        """
         return self._name
 
     def set_pre_modules(self, modules: List[Module]) -> None:
+        """
+        Sets the pre-processing modules.
+        Args:
+            modules (List[Module]): List of pre-processing modules. This will apply for all new requests to the pipeline.
+        """
         with self._lock:
             self._pre_modules = PipelineProcessingPhase(modules, name=f"PPP-{self._name}-pre")
 
     def set_main_modules(self, modules: List[Module]) -> None:
+        """
+        Sets the main processing modules.
+        Args:
+            modules (List[Module]): List of main processing modules. This will apply for all new requests to the pipeline.
+        """
         with self._lock:
             self._main_modules = PipelineProcessingPhase(modules, name=f"PPP-{self._name}-main")
 
     def set_post_modules(self, modules: List[Module]) -> None:
+        """
+        Sets the post-processing modules. This will apply for all new requests to the pipeline.
+        Args:
+            modules (List[Module]): List of post-processing modules.
+        """
         with self._lock:
             self._post_modules = PipelineProcessingPhase(modules, name=f"PPP-{self._name}-post")
 
     def set_max_workers(self, max_workers: int) -> None:
+        """
+        Sets the maximum number of worker threads.
+        Args:
+            max_workers (int): Maximum number of worker threads. Will apply immediately to all requests including the ones that are currently in the queue.
+        """
         with self._lock:
             self._max_workers = max_workers
             self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
     def set_mode(self, mode: PipelineMode) -> None:
+        """
+        Sets the mode of pipeline execution.
+        Args:
+            mode (PipelineMode): The execution mode to set. Will apply immediately to all requests including the ones that are currently in the queue and running.
+        """
         with self._lock:
             self._mode = mode
 
     def run(self, data: Any, callback: Callable[[bool, str, DataPackage], None]) -> None:
         """
         Executes the pipeline with the given data.
+        Args:
+            data (Any): The data to process.
+            callback (Callable[[bool, str, DataPackage], None]): The callback function to call with the result.
         """
         callback_id = id(callback)
         with self._lock:
