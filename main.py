@@ -1,7 +1,7 @@
 # main.py
 import random
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, ModuleOptions
-from pipeline import Pipeline
+from src.pipeline import Pipeline, PipelineMode
 from prometheus_client import start_http_server
 import concurrent.futures
 import time
@@ -63,10 +63,14 @@ post_modules = [
     ])
 ]
 
-manager = Pipeline("test-pipeline", pre_modules, main_modules, post_modules)
 
+manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 10, PipelineMode.ORDER_BY_SEQUENCE)
+
+counter = 0
 def callback(result, message, processed_data):
+    global counter
     print(result, message, processed_data)
+    counter = counter + 1
 
 # Function to execute the processing pipeline
 def process_data(data):
@@ -97,3 +101,5 @@ for d in data_list:
 # Keep the main thread alive
 while True:
     time.sleep(1)
+    if counter >= len(data_list):
+        break

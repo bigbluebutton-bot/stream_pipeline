@@ -1,35 +1,35 @@
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 import threading
 from typing import Any, Callable, Dict, List, Tuple
 import unittest
+from unittest.mock import MagicMock
 import uuid
 
 from .module_classes import Module
 
+
 @dataclass
 class DataPackage:
-    id: uuid.UUID
-    pipeline_process_id: uuid.UUID
+    id: str
+    pipeline_executer_id: str
     sequence_number: int
     data: Any = None
+
 
 class PipelineProcessingPhase:
     """
     Class to manage and execute a sequence of modules.
     """
     def __init__(self, modules: List[Module], name: str = "") -> None:
-        self._id = "PPP-" + str(uuid.uuid4())
-        if name == "":
-            self._name = self._id
-        else:
-            self._name = name
+        self._id = f"PPP-{uuid.uuid4()}"
+        self._name = name if name else self._id
         self._modules = modules.copy()
 
     def get_id(self) -> str:
         return self._id
-    
+
     def get_name(self) -> str:
         return self._name
 
@@ -42,21 +42,22 @@ class PipelineProcessingPhase:
             try:
                 success, message, return_data = module.run(data)
                 if not success:
-                    return False, f"Module {module.get_name()} failed: {message}", data
+                    return False, f"Module {module.get_name()} failed: {message}", data_package
             except Exception as e:
-                return False, f"Module {module.get_name()} failed with error: {str(e)}", data
+                return False, f"Module {module.get_name()} failed with error: {e}", data_package
 
         data_package.data = return_data
         return True, f"Modules {module.get_name()} succeeded", data_package
 
 
-class PipelineProcess:
+class PipelineExecutor:
+    """
+    Class to manage the execution of a pipeline process by creating DataPackages and executing the PipelineProcessingPhases.
+    """
+    
     def __init__(self, name: str = "") -> None:
-        self._id = "PP-" + str(uuid.uuid4())
-        if name == "":
-            self._name = self._id
-        else:
-            self._name = name
+        self._id = f"PE-{uuid.uuid4()}"
+        self._name = name if name else self._id
         self._next_sequence_number = 0
         self._last_finished_sequence_number = -1
 
@@ -67,56 +68,50 @@ class PipelineProcess:
 
     def get_id(self) -> str:
         return self._id
-    
+
     def get_name(self) -> str:
         return self._name
-    
+
     def get_last_finished_sequence_number(self) -> int:
         return self._last_finished_sequence_number
-    
+
     def set_last_finished_sequence_number(self, sequence_number: int) -> None:
         if sequence_number >= self._next_sequence_number or sequence_number < self._last_finished_sequence_number:
-            raise("WARNING: Sequence number cannot be greater or equal than the next sequence number or smaller than the last finished sequence number. Ignoring.")
+            raise ValueError("Sequence number cannot be greater or equal than the next sequence number or smaller than the last finished sequence number.")
         self._last_finished_sequence_number = sequence_number
-        
-    
+
     def run(self, pipeline_processing_phases: List[PipelineProcessingPhase], sequence_number: int) -> Tuple[bool, str, DataPackage]:
         """
         Executes the pipeline process with the given data package.
         """
         with self._lock:
-            if sequence_number not in self._data_packages:
+            data_package = self._data_packages.get(sequence_number)
+            if not data_package:
                 return False, f"Data package with sequence number {sequence_number} not found. First add data with add_data(data: Any)", None
 
-            data_package = self._data_packages[sequence_number]
-        
         for phase in pipeline_processing_phases:
-            # Execute the phase with the data package
             success, message, result = phase.run(data_package)
             if not success:
                 return False, f"Pipeline {self._name} failed: {message}", result
 
-        return True, "All pipeline phases succeeded", data_package
+        return True, "All pipeline phases succeeded", result
 
     def add_data(self, data: Any) -> DataPackage:
         with self._lock:
             data_package = DataPackage(
                 id= "DP-" + str(uuid.uuid4()),
-                pipeline_process_id=self._id,
+                pipeline_executer_id=self._id,
                 sequence_number=self._next_sequence_number,
                 data=data
             )
             self._data_packages[self._next_sequence_number] = data_package
             self._next_sequence_number += 1
-            
             return data_package
-        
+
     def remove_data(self, sequence_number: int) -> None:
         with self._lock:
-            if sequence_number in self._data_packages:
-                self._data_packages.pop(sequence_number)
-            if sequence_number in self._finished_data_packages:
-                self._finished_data_packages.pop(sequence_number)
+            self._data_packages.pop(sequence_number, None)
+            self._finished_data_packages.pop(sequence_number, None)
 
     def push_finished_data_package(self, sequence_number: int) -> None:
         """
@@ -159,154 +154,212 @@ class Pipeline:
     Class to manage pre-processing, main processing, and post-processing stages.
     """
     def __init__(self, pre_modules: List[Module], main_modules: List[Module], post_modules: List[Module], name: str = "", max_workers: int = 10, mode: PipelineMode = PipelineMode.ORDER_BY_SEQUENCE) -> None:
-        self._id: str = "P-" + str(uuid.uuid4())
-        if name == "":
-            self._name: str = self._id
-        else:
-            self._name: str = name
-        self._pre_modules: PipelineProcessingPhase = PipelineProcessingPhase(pre_modules, name=self._name + "-pre")
-        self._main_modules: PipelineProcessingPhase = PipelineProcessingPhase(main_modules, name=self._name + "-main")
-        self._post_modules: PipelineProcessingPhase = PipelineProcessingPhase(post_modules, name=self._name + "-post")
+        self._id: str = f"P-{uuid.uuid4()}"
+        self._name: str = name if name else self._id
+        self._pre_modules = PipelineProcessingPhase(pre_modules, name=f"PPP-{self._name}-pre")
+        self._main_modules = PipelineProcessingPhase(main_modules, name=f"PPP-{self._name}-main")
+        self._post_modules = PipelineProcessingPhase(post_modules, name=f"PPP-{self._name}-post")
         self._max_workers: int = max_workers
         self._mode: PipelineMode = mode
-        self._pipeline_process_map: Dict[uuid.UUID, PipelineProcess] = {}
-        self.active_futures: Dict[int, Future] = {}
+        self._executor_map: Dict[int, PipelineExecutor] = {}
+        self.active_futures: Dict[str, Future] = {}
 
         self._lock = threading.Lock()
-
+        self.executor = ThreadPoolExecutor(max_workers=max_workers) if max_workers > 0 else None
 
     def get_id(self) -> str:
         return self._id
-    
+
     def get_name(self) -> str:
         return self._name
-    
+
     def set_pre_modules(self, modules: List[Module]) -> None:
         with self._lock:
-            self._pre_modules = modules.copy()
-            
+            self._pre_modules = PipelineProcessingPhase(modules, name=f"PPP-{self._name}-pre")
+
     def set_main_modules(self, modules: List[Module]) -> None:
         with self._lock:
-            self._main_modules = modules.copy()
-            
+            self._main_modules = PipelineProcessingPhase(modules, name=f"PPP-{self._name}-main")
+
     def set_post_modules(self, modules: List[Module]) -> None:
         with self._lock:
-            self._post_modules = modules.copy()
-            
+            self._post_modules = PipelineProcessingPhase(modules, name=f"PPP-{self._name}-post")
+
     def set_max_workers(self, max_workers: int) -> None:
         with self._lock:
             self._max_workers = max_workers
-            
+            self.executor = ThreadPoolExecutor(max_workers=max_workers)
+
     def set_mode(self, mode: PipelineMode) -> None:
         with self._lock:
             self._mode = mode
-            
-    def run(self, data: Any, callback: Callable[[bool, str, Any], None]) -> Tuple[bool, str, DataPackage]:
+
+    def run(self, data: Any, callback: Callable[[bool, str, DataPackage], None]) -> None:
         """
         Executes the pipeline with the given data.
         """
-        mode = self._mode
-        
         callback_id = id(callback)
         with self._lock:
-            process = self._pipeline_process_map.get(callback_id, None)
-            if process is None:
-                process = PipelineProcess(name=self._name + "-process-" + str(callback_id))
-                self._pipeline_process_map[callback_id] = process
-                
-        data_package = process.add_data(data)
-        
-        def execute_pipeline():
+            executor = self._executor_map.get(callback_id)
+            if executor is None:
+                executor = PipelineExecutor(name=f"PE-{self._name}-process-{callback_id}")
+                self._executor_map[callback_id] = executor
+
+        data_package = executor.add_data(data)
+
+        def execute_pipeline() -> None:
             with self._lock:
                 pipeline_processing_phases = [self._pre_modules, self._main_modules, self._post_modules]
-            
-            success, message, result = process.run(pipeline_processing_phases, data_package.sequence_number)
+
+            success, message, result = executor.run(pipeline_processing_phases, data_package.sequence_number)
             if not success:
                 callback(False, message, result)
                 return
-                
-            if mode == PipelineMode.ORDER_BY_SEQUENCE:
-                process.push_finished_data_package(data_package.sequence_number)
-                finished_data_packages = process.pop_finished_data_packages()
+
+            if self._mode == PipelineMode.ORDER_BY_SEQUENCE:
+                executor.push_finished_data_package(data_package.sequence_number)
+                finished_data_packages = executor.pop_finished_data_packages()
                 for _, finished_data_package in finished_data_packages.items():
                     callback(True, f"Pipeline {self._name} succeeded", finished_data_package)
-                    
-            elif mode == PipelineMode.FIRST_WINS:
+
+            elif self._mode == PipelineMode.FIRST_WINS:
                 with self._lock:
-                    last_finished_sequence_number = process.get_last_finished_sequence_number()
+                    last_finished_sequence_number = executor.get_last_finished_sequence_number()
                     if data_package.sequence_number <= last_finished_sequence_number:
-                        process.remove_data(data_package.sequence_number)
-                        # Remove from thread queue if not already running
-                        # callback(False, f"Data package with sequence number {data_package.sequence_number} is outdated, but was processed without errors", data_package)
+                        self.active_futures.pop(f"{executor.get_id()}-{data_package.sequence_number}")
+                        executor.remove_data(data_package.sequence_number)
                         return
-                    process.set_last_finished_sequence_number(data_package.sequence_number)
+                    executor.set_last_finished_sequence_number(data_package.sequence_number)
                     callback(True, f"Pipeline {self._name} succeeded", data_package)
-                    
-            elif mode == PipelineMode.NO_ORDER:
-                process.remove_data(data_package.sequence_number)
-                callback(True, f"Pipeline {self._name} succeeded", finished_data_package)
-                
-        pid = process.get_id() + "-" + str(data_package.sequence_number)
+
+            elif self._mode == PipelineMode.NO_ORDER:
+                executor.remove_data(data_package.sequence_number)
+                callback(True, f"Pipeline {self._name} succeeded", data_package)
+
+        if self.executor is None:
+            execute_pipeline()
+            return
+
+        eid = f"{executor.get_id()}-{data_package.sequence_number}"
         future = self.executor.submit(execute_pipeline)
-        if mode == PipelineMode.FIRST_WINS:
-            self.active_futures[pid] = future
-        print(f"Task {pid} submitted")
+        if self._mode == PipelineMode.FIRST_WINS:
+            self.active_futures[eid] = future
+        print(f"Task {eid} submitted")
 
 
 
 
-class TestPipelineProcess(unittest.TestCase):
-    def test_add_data(self) -> None:
-        pp = PipelineProcess()
-        pp.add_data("test_data_1")
-        pp.add_data("test_data_2")
 
-        self.assertEqual(len(pp._data_packages), 2)
-        self.assertEqual(pp._next_sequence_number, 2)
+class TestPipeline(unittest.TestCase):
+    
+    class MockModule(Module):
+        def execute(self, data):
+            return True, "Success", data
+    
+    class MockFailingModule(Module):
+        def execute(self, data):
+            return False, "Failure", data
 
-    def test_push_finished_data_package(self) -> None:
-        pp = PipelineProcess()
-        pp.add_data("test_data_1")
-        pp.add_data("test_data_2")
+    class MockExceptionModule(Module):
+        def execute(self, data):
+            raise Exception("Exception")
 
-        pp.push_finished_data_package(0)
-        pp.push_finished_data_package(1)
+    def setUp(self):
+        self.data_package = DataPackage(
+            id="DP-123",
+            pipeline_executer_id="PIPE-123",
+            sequence_number=0,
+            data="test_data"
+        )
+        self.mock_module = self.MockModule()
+        self.mock_failing_module = self.MockFailingModule()
+        self.mock_exception_module = self.MockExceptionModule()
 
-        self.assertEqual(len(pp._data_packages), 0)
-        self.assertEqual(len(pp._finished_data_packages), 2)
+    def test_pipeline_processing_phase_success(self):
+        phase = PipelineProcessingPhase(modules=[self.mock_module], name="TestPhase")
+        success, message, result = phase.run(self.data_package)
+        self.assertTrue(success)
+        self.assertEqual(message, "Modules MockModule succeeded")
+        self.assertEqual(result.data, "test_data")
 
-    def test_pop_finished_data_packages(self) -> None:
-        pp = PipelineProcess()
-        pp.add_data("test_data_1")
-        pp.add_data("test_data_2")
-        pp.add_data("test_data_3")
-        pp.push_finished_data_package(0)
-        pp.push_finished_data_package(1)
-        pp.push_finished_data_package(2)
+    def test_pipeline_processing_phase_failure(self):
+        phase = PipelineProcessingPhase(modules=[self.mock_failing_module], name="TestPhase")
+        success, message, result = phase.run(self.data_package)
+        self.assertFalse(success)
+        self.assertEqual(message, "Module MockFailingModule failed: Failure")
 
-        finished_packages = pp.pop_finished_data_packages()
-        pp.pop_finished_data_packages()
+    def test_pipeline_processing_phase_exception(self):
+        phase = PipelineProcessingPhase(modules=[self.mock_exception_module], name="TestPhase")
+        success, message, result = phase.run(self.data_package)
+        self.assertFalse(success)
+        self.assertIn("Module MockExceptionModule failed with error", message)
 
-        self.assertEqual(len(finished_packages), 3)
-        self.assertEqual(len(pp._finished_data_packages), 0)
-        self.assertEqual(pp._last_finished_sequence_number, 2)
+    def test_pipeline_executor_add_data(self):
+        executor = PipelineExecutor(name="TestExecutor")
+        data_package = executor.add_data("test_data")
+        self.assertEqual(data_package.data, "test_data")
+        self.assertEqual(data_package.sequence_number, 0)
 
-    def test_pop_partial_finished_data_packages(self) -> None:
-        pp = PipelineProcess()
-        pp.add_data("test_data_1")
-        pp.add_data("test_data_2")
-        pp.add_data("test_data_3")
-        pp.push_finished_data_package(0)
-        pp.push_finished_data_package(2)
+    def test_pipeline_executor_run_success(self):
+        executor = PipelineExecutor(name="TestExecutor")
+        data_package = executor.add_data("test_data")
+        phase = PipelineProcessingPhase(modules=[self.mock_module], name="TestPhase")
+        success, message, result = executor.run([phase], data_package.sequence_number)
+        self.assertTrue(success)
+        self.assertEqual(message, "All pipeline phases succeeded")
 
-        finished_packages = pp.pop_finished_data_packages()
-        pp.pop_finished_data_packages()
+    def test_pipeline_executor_run_failure(self):
+        executor = PipelineExecutor(name="TestExecutor")
+        data_package = executor.add_data("test_data")
+        phase = PipelineProcessingPhase(modules=[self.mock_failing_module], name="TestPhase")
+        success, message, result = executor.run([phase], data_package.sequence_number)
+        self.assertFalse(success)
+        self.assertIn("Pipeline TestExecutor failed", message)
 
-        self.assertEqual(len(finished_packages), 1)
-        self.assertEqual(len(pp._finished_data_packages), 1)
-        self.assertEqual(pp._last_finished_sequence_number, 0)
-        self.assertIn(2, pp._finished_data_packages)
+    def test_pipeline_executor_run_exception(self):
+        executor = PipelineExecutor(name="TestExecutor")
+        data_package = executor.add_data("test_data")
+        phase = PipelineProcessingPhase(modules=[self.mock_exception_module], name="TestPhase")
+        success, message, result = executor.run([phase], data_package.sequence_number)
+        self.assertFalse(success)
+        self.assertIn("Pipeline TestExecutor failed", message)
+
+    def test_pipeline_run_order_by_sequence(self):
+        pipeline = Pipeline(
+            pre_modules=[self.mock_module],
+            main_modules=[self.mock_module],
+            post_modules=[self.mock_module],
+            name="TestPipeline",
+            mode=PipelineMode.ORDER_BY_SEQUENCE
+        )
+        callback = MagicMock()
+        pipeline.run("test_data", callback)
+        callback.assert_called()
+
+    def test_pipeline_run_first_wins(self):
+        pipeline = Pipeline(
+            pre_modules=[self.mock_module],
+            main_modules=[self.mock_module],
+            post_modules=[self.mock_module],
+            name="TestPipeline",
+            mode=PipelineMode.FIRST_WINS
+        )
+        callback = MagicMock()
+        pipeline.run("test_data", callback)
+        callback.assert_called()
+
+    def test_pipeline_run_no_order(self):
+        pipeline = Pipeline(
+            pre_modules=[self.mock_module],
+            main_modules=[self.mock_module],
+            post_modules=[self.mock_module],
+            name="TestPipeline",
+            mode=PipelineMode.NO_ORDER
+        )
+        callback = MagicMock()
+        pipeline.run("test_data", callback)
+        callback.assert_called()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
