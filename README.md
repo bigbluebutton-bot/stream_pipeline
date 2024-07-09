@@ -7,7 +7,7 @@ stateDiagram-v2
     state audio_fork <<fork>>
     ReceiveAudioStream --> audio_fork
     audio_fork --> Buffer_of_n_seconds_audio: Process audio chunk
-    audio_fork --> ReceiveAudioStream: Receve next audio chunk
+    audio_fork --> ReceiveAudioStream: Receive next audio chunk
 
     Buffer_of_n_seconds_audio --> Pipeline: Process audio buffer
     note left of Buffer_of_n_seconds_audio
@@ -17,7 +17,7 @@ stateDiagram-v2
     state Pipeline {
         [*] --> PackIntoPackages: Start Pipeline
         state parallelPipe <<fork>>
-        gRPCreceve --> parallelPipe
+        gRPCreceive --> parallelPipe
         PackIntoPackages --> parallelPipe
         parallelPipe --> PreProcessing: 0
         parallelPipe --> PreProcessing: 1
@@ -113,7 +113,7 @@ stateDiagram-v2
         PostProcessing --> parallelPipeJoin: (...n)
 
         state if_state <<choice>>
-        parallelPipeJoin --> if_state: If receved over gRPC
+        parallelPipeJoin --> if_state: If received over gRPC
         if_state --> gRPCreturn: True
         if_state --> OrderPackages: False
 
