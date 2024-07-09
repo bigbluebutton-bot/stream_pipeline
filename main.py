@@ -1,7 +1,7 @@
 # main.py
 import random
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, ModuleOptions
-from src.processing import Pipeline
+from pipeline import Pipeline
 from prometheus_client import start_http_server
 import concurrent.futures
 import time

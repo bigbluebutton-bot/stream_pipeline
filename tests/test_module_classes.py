@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 import unittest
 from module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
-from processing import PipelineProcessingPhase, Pipeline
+from pipeline import PipelineProcessingPhase, Pipeline
 
 class SimpleExecutionModule(ExecutionModule):
     def execute(self, data):
