@@ -17,11 +17,12 @@ stateDiagram-v2
     state Pipeline {
         [*] --> PackIntoPackages: Start Pipeline
         state parallelPipe <<fork>>
+        gRPCreceve --> parallelPipe
         PackIntoPackages --> parallelPipe
         parallelPipe --> PreProcessing: 0
         parallelPipe --> PreProcessing: 1
         parallelPipe --> PreProcessing: (...n)
-        
+
         state PreProcessing {
 
             [*] --> PreModule0: Start Pre-Processing
@@ -110,7 +111,12 @@ stateDiagram-v2
         PostProcessing --> parallelPipeJoin: 0
         PostProcessing --> parallelPipeJoin: 1
         PostProcessing --> parallelPipeJoin: (...n)
-        parallelPipeJoin --> OrderPackages
+
+        state if_state <<choice>>
+        parallelPipeJoin --> if_state: If receved over gRPC
+        if_state --> gRPCreturn: True
+        if_state --> OrderPackages: False
+
         OrderPackages --> [*]: End Pipeline
     }
 
