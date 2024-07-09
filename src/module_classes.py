@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import threading
 from typing import Any, List, Tuple, final, NamedTuple
 import time
+import uuid
 from prometheus_client import Gauge, Summary
 
 # Metrics to track time spent on processing modules
@@ -24,8 +25,16 @@ class Module(ABC):
     """
     _locks = {}
 
-    def __init__(self, options: ModuleOptions = ModuleOptions()):
+    def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
+        self._id = "M-" + str(uuid.uuid4())
+        self._name = name if name else self._id
         self.use_mutex = options.use_mutex
+
+    def get_id(self):
+        return self._id
+    
+    def get_name(self):
+        return self._name
 
     @property
     def mutex(self):
@@ -72,8 +81,8 @@ class Module(ABC):
         pass
 
 class ExecutionModule(Module, ABC):
-    def __init__(self, options: ModuleOptions = ModuleOptions()):
-        super().__init__(options)
+    def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
+        super().__init__(options, name)
 
     """
     Abstract class for modules that perform specific execution tasks.
@@ -90,8 +99,8 @@ class ConditionModule(Module, ABC):
     Abstract class for modules that decide between two modules based on a condition.
     """
     @final
-    def __init__(self, true_module: Module, false_module: Module, options: ModuleOptions = ModuleOptions()):
-        super().__init__(options)
+    def __init__(self, true_module: Module, false_module: Module, options: ModuleOptions = ModuleOptions(), name: str = ""):
+        super().__init__(options, name)
         self.true_module = true_module
         self.false_module = false_module
 
@@ -123,8 +132,8 @@ class CombinationModule(Module):
     Class for modules that combine multiple modules sequentially.
     """
     @final
-    def __init__(self, modules: List[Module], options: ModuleOptions = ModuleOptions()):
-        super().__init__(options)
+    def __init__(self, modules: List[Module], options: ModuleOptions = ModuleOptions(), name: str = ""):
+        super().__init__(options, name)
         self.modules = modules
     
     @final
