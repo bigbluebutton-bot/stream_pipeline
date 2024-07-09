@@ -1,242 +1,312 @@
-from concurrent.futures import Future, ThreadPoolExecutor
-import threading
-import inspect
-import time
-from typing import Callable, Dict, List, Tuple, Any
-
+from concurrent.futures import Future
+from dataclasses import dataclass
 from enum import Enum
-from prometheus_client import Gauge, Summary
-from .module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
+import threading
+from typing import Any, Callable, Dict, List, Tuple
+import unittest
+import uuid
 
-# Metrics to track time spent on processing modules
-TOTAL_PROCESSING_TIME = Summary('total_processing_seconds', 'Total time spent processing all modules', ['pipeline_name'])
-TOTAL_PIPELINE_TIME = Summary('total_pipeline_seconds', 'Total time spent processing the pipeline', ['pipeline_name'])
-PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of tasks currently being processed', ['pipeline_name'])
-PIPELINE_WAITING_COUNTER = Gauge('pipeline_waiting_counter', 'Number of tasks waiting to be executed', ['pipeline_name'])
-PIPELINE_WAITING_TIME = Summary('pipeline_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['pipeline_name'])
+from .module_classes import Module
+
+@dataclass
+class DataPackage:
+    id: uuid.UUID
+    pipeline_process_id: uuid.UUID
+    sequence_number: int
+    data: Any = None
 
 class PipelineProcessingPhase:
     """
     Class to manage and execute a sequence of modules.
     """
-    def __init__(self, modules: List[Module]):
-        self.modulesMutex = threading.RLock()
-        self._modules = modules
-        try:
-            self.setModules(modules)
-        except Exception as e:
-            raise e
+    def __init__(self, modules: List[Module], name: str = "") -> None:
+        self._id = "PPP-" + str(uuid.uuid4())
+        if name == "":
+            self._name = self._id
+        else:
+            self._name = name
+        self._modules = modules.copy()
 
-    def setModules(self, modules: List[Module]):
-        """
-        Sets the modules for the processing sequence during runtime. Will apply on the next run.
-        """
-        for module in modules:
-            if not isinstance(module, Module):
-                raise TypeError(f"Module {module} is not a subclass of Module")
-            self._validate_execute_method(module)
-        
-        with self.modulesMutex:
-            self._modules = modules
+    def get_id(self) -> str:
+        return self._id
+    
+    def get_name(self) -> str:
+        return self._name
 
-    def _validate_execute_method(self, module: Module) -> None:
+    def run(self, data_package: DataPackage) -> Tuple[bool, str, DataPackage]:
         """
-        Validates that the module has an execute method with the correct signature.
+        Executes the pipeline processing phase with the given data package.
         """
-        execute_method = getattr(module, 'execute', None)
-        if execute_method is None:
-            raise TypeError(f"Module {module.__class__.__name__} does not have an 'execute' method")
-
-        # Check the method signature
-        signature = inspect.signature(execute_method)
-        parameters = list(signature.parameters.values())
-        if len(parameters) != 1 or parameters[0].name != 'data':
-            raise TypeError(f"'execute' method of {module.__class__.__name__} must accept exactly one parameter 'data'")
-
-    def run(self, data: Any) -> Tuple[bool, str, Any]:
-        """
-        Runs the sequence of modules on the given data.
-        """
-        modules_copy = None
-        with self.modulesMutex:
-            modules_copy = self._modules[:]
-        
-        result_data = data
-        for i, module in enumerate(modules_copy):
-            module_name = module.__class__.__name__
+        data = data_package.data
+        for module in self._modules:
             try:
-                result = module.run(result_data)
-
-                if not (isinstance(result, tuple) and len(result) == 3 and isinstance(result[0], bool) and isinstance(result[1], str)):
-                    raise TypeError(f"Module {i} ({module_name}) returned an invalid result. Expected (bool, str, Any). Got {result}")
-
-                result, result_message, result_data = result
-                if not result:
-                    return False, f"Module {i} ({module_name}) failed: {result_message}", result_data
+                success, message, return_data = module.run(data)
+                if not success:
+                    return False, f"Module {module.get_name()} failed: {message}", data
             except Exception as e:
-                return False, f"Module {i} ({module_name}) failed with error: {str(e)}", result_data
-        return True, "Processing succeeded", result_data
+                return False, f"Module {module.get_name()} failed with error: {str(e)}", data
+
+        data_package.data = return_data
+        return True, f"Modules {module.get_name()} succeeded", data_package
+
 
 class PipelineProcess:
-    def __init__(self, id: int):
-        self.id: int = id
-        self.sequence_number_count: int = 0
-        self.finished_sequence_number_count: int = -1
-        self.stored_data: Dict[int, Any] = {}
-        self.lock = threading.Lock()
-        
-        self.previous_modules_to_finish_time = None
-        
-    def get_sequence_number(self) -> int:
-        with self.lock:
-            return self.sequence_number_count
+    def __init__(self, name: str = "") -> None:
+        self._id = "PP-" + str(uuid.uuid4())
+        if name == "":
+            self._name = self._id
+        else:
+            self._name = name
+        self._next_sequence_number = 0
+        self._last_finished_sequence_number = -1
+
+        self._data_packages: Dict[int, DataPackage] = {}
+        self._finished_data_packages: Dict[int, DataPackage] = {}
+
+        self._lock = threading.Lock()
+
+    def get_id(self) -> str:
+        return self._id
     
-    def get_finished_sequence_number(self) -> int:
-        with self.lock:
-            return self.finished_sequence_number_count
+    def get_name(self) -> str:
+        return self._name
+    
+    def get_last_finished_sequence_number(self) -> int:
+        return self._last_finished_sequence_number
+    
+    def set_last_finished_sequence_number(self, sequence_number: int) -> None:
+        if sequence_number >= self._next_sequence_number or sequence_number < self._last_finished_sequence_number:
+            raise("WARNING: Sequence number cannot be greater or equal than the next sequence number or smaller than the last finished sequence number. Ignoring.")
+        self._last_finished_sequence_number = sequence_number
         
-    def increase_sequence_number(self):
-        with self.lock:
-            self.sequence_number_count += 1
+    
+    def run(self, pipeline_processing_phases: List[PipelineProcessingPhase], sequence_number: int) -> Tuple[bool, str, DataPackage]:
+        """
+        Executes the pipeline process with the given data package.
+        """
+        with self._lock:
+            if sequence_number not in self._data_packages:
+                return False, f"Data package with sequence number {sequence_number} not found. First add data with add_data(data: Any)", None
+
+            data_package = self._data_packages[sequence_number]
         
-    def set_finished_sequence_number(self, sequence_number: int):
-        with self.lock:
-            self.finished_sequence_number_count = sequence_number
+        for phase in pipeline_processing_phases:
+            # Execute the phase with the data package
+            success, message, result = phase.run(data_package)
+            if not success:
+                return False, f"Pipeline {self._name} failed: {message}", result
+
+        return True, "All pipeline phases succeeded", data_package
+
+    def add_data(self, data: Any) -> DataPackage:
+        with self._lock:
+            data_package = DataPackage(
+                id= "DP-" + str(uuid.uuid4()),
+                pipeline_process_id=self._id,
+                sequence_number=self._next_sequence_number,
+                data=data
+            )
+            self._data_packages[self._next_sequence_number] = data_package
+            self._next_sequence_number += 1
+            
+            return data_package
         
-    def increase_finished_sequence_number(self):
-        with self.lock:
-            self.finished_sequence_number_count += 1
-        
-    def store_data(self, sequence_number: int, data: Any):
-        with self.lock:
-            self.stored_data[sequence_number] = data
-        
-    def get_next_data(self) -> Any:
-        with self.lock:
-            data = self.stored_data.get(self.finished_sequence_number_count + 1)
-            if data is not None:
-                del self.stored_data[self.finished_sequence_number_count + 1]
-            return data
+    def remove_data(self, sequence_number: int) -> None:
+        with self._lock:
+            if sequence_number in self._data_packages:
+                self._data_packages.pop(sequence_number)
+            if sequence_number in self._finished_data_packages:
+                self._finished_data_packages.pop(sequence_number)
+
+    def push_finished_data_package(self, sequence_number: int) -> None:
+        """
+        Pushes a data package to the finished queue based on its sequence number.
+        """
+        with self._lock:
+            if sequence_number in self._data_packages:
+                data_package = self._data_packages.pop(sequence_number)
+                self._finished_data_packages[sequence_number] = data_package
+
+    def pop_finished_data_packages(self) -> Dict[uuid.UUID, DataPackage]:
+        """
+        Returns a dict of finished data packages in order of sequence number until the first missing sequence number and removes them from the queue.
+        Example:
+            Queue: [1, 2, 5, 6, 7]
+                -> Returns: [1, 2]
+            Queue left: [5, 6, 7]
+        """
+        with self._lock:
+            finished_data_packages = {}
+            current_sequence = self._last_finished_sequence_number + 1
+
+            while current_sequence in self._finished_data_packages:
+                data_package = self._finished_data_packages.pop(current_sequence)
+                finished_data_packages[data_package.id] = data_package
+                self._last_finished_sequence_number = current_sequence
+                current_sequence += 1
+
+            return finished_data_packages
+
 
 class PipelineMode(Enum):
     ORDER_BY_SEQUENCE = 1
     FIRST_WINS = 2
     NO_ORDER = 3
 
+
 class Pipeline:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
     """
-    def __init__(self, name: str, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], max_workers: int = 10, mode: PipelineMode = PipelineMode.ORDER_BY_SEQUENCE):
-        self.name = name
-        self.pre_processing = PipelineProcessingPhase(pre_modules)
-        self.main_processing = PipelineProcessingPhase(main_modules)
-        self.post_processing = PipelineProcessingPhase(post_modules)
-        if max_workers < 1:
-            self.multithreading = False
-            self.executor = None
+    def __init__(self, pre_modules: List[Module], main_modules: List[Module], post_modules: List[Module], name: str = "", max_workers: int = 10, mode: PipelineMode = PipelineMode.ORDER_BY_SEQUENCE) -> None:
+        self._id: str = "P-" + str(uuid.uuid4())
+        if name == "":
+            self._name: str = self._id
         else:
-            self.multithreading = True
-            self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.process_map: Dict[int, PipelineProcess] = {}
-        self.mode = mode
-        self.callback_lock = threading.Lock()
+            self._name: str = name
+        self._pre_modules: PipelineProcessingPhase = PipelineProcessingPhase(pre_modules, name=self._name + "-pre")
+        self._main_modules: PipelineProcessingPhase = PipelineProcessingPhase(main_modules, name=self._name + "-main")
+        self._post_modules: PipelineProcessingPhase = PipelineProcessingPhase(post_modules, name=self._name + "-post")
+        self._max_workers: int = max_workers
+        self._mode: PipelineMode = mode
+        self._pipeline_process_map: Dict[uuid.UUID, PipelineProcess] = {}
         self.active_futures: Dict[int, Future] = {}
 
-    def setPreModules(self, modules: List[Any]) -> None:
-        self.pre_processing.setModules(modules)
-        
-    def setMainModules(self, modules: List[Any]) -> None:
-        self.main_processing.setModules(modules)
-        
-    def setPostModules(self, modules: List[Any]) -> None:
-        self.post_processing.setModules(modules)
+        self._lock = threading.Lock()
 
-    def run(self, data: Any, callback: Callable[[bool, str, Any], None]) -> None:
-        """
-        Executes the pre-processing, main processing, and post-processing stages sequentially.
-        """
-        
-        # Get process from self.process_map or add it by str(id(callback)) as id
-        process = self.process_map.get(id(callback))
-        if process is None:
-            process = PipelineProcess(id(callback))
-            self.process_map[id(callback)] = process
-        
-        waiting_time = time.time()
-        
-        def execute(sequence_number: int) -> None:
-            PIPELINE_WAITING_TIME.labels(pipeline_name=self.name).observe(time.time()-waiting_time)
-            PIPELINE_WAITING_COUNTER.labels(pipeline_name=self.name).dec()
-            PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self.name).inc()
-            start_time = time.time()
+
+    def get_id(self) -> str:
+        return self._id
+    
+    def get_name(self) -> str:
+        return self._name
+    
+    def set_pre_modules(self, modules: List[Module]) -> None:
+        with self._lock:
+            self._pre_modules = modules.copy()
             
-            pre_result, pre_message, pre_data = self.pre_processing.run(data)
-            if not pre_result:
-                callback(False, f"Pre-processing failed: {pre_message}", pre_data)
-                return
-
-            main_result, main_message, main_data = self.main_processing.run(pre_data)
-            if not main_result:
-                callback(False, f"Main processing failed: {main_message}", main_data)
-                return
-
-            post_result, post_message, post_data = self.post_processing.run(main_data)
-            if not post_result:
-                callback(False, f"Post-processing failed: {post_message}", post_data)
-                return
-
-            TOTAL_PROCESSING_TIME.labels(pipeline_name=self.name).observe(time.time()-start_time)
-
-            if not self.multithreading:
-                print(f"Task completed")
-                callback(True, "All processing succeeded", post_data)
-            else:
-                print(f"Task {sequence_number} completed")
+    def set_main_modules(self, modules: List[Module]) -> None:
+        with self._lock:
+            self._main_modules = modules.copy()
+            
+    def set_post_modules(self, modules: List[Module]) -> None:
+        with self._lock:
+            self._post_modules = modules.copy()
+            
+    def set_max_workers(self, max_workers: int) -> None:
+        with self._lock:
+            self._max_workers = max_workers
+            
+    def set_mode(self, mode: PipelineMode) -> None:
+        with self._lock:
+            self._mode = mode
+            
+    def run(self, data: Any, callback: Callable[[bool, str, Any], None]) -> Tuple[bool, str, DataPackage]:
+        """
+        Executes the pipeline with the given data.
+        """
+        mode = self._mode
+        
+        callback_id = id(callback)
+        with self._lock:
+            process = self._pipeline_process_map.get(callback_id, None)
+            if process is None:
+                process = PipelineProcess(name=self._name + "-process-" + str(callback_id))
+                self._pipeline_process_map[callback_id] = process
                 
-                with self.callback_lock:
-                    if self.mode == PipelineMode.NO_ORDER:
-                        callback(True, "All processing succeeded", post_data)
+        data_package = process.add_data(data)
+        
+        def execute_pipeline():
+            with self._lock:
+                pipeline_processing_phases = [self._pre_modules, self._main_modules, self._post_modules]
+            
+            success, message, result = process.run(pipeline_processing_phases, data_package.sequence_number)
+            if not success:
+                callback(False, message, result)
+                return
+                
+            if mode == PipelineMode.ORDER_BY_SEQUENCE:
+                process.push_finished_data_package(data_package.sequence_number)
+                finished_data_packages = process.pop_finished_data_packages()
+                for _, finished_data_package in finished_data_packages.items():
+                    callback(True, f"Pipeline {self._name} succeeded", finished_data_package)
                     
-                    elif self.mode == PipelineMode.ORDER_BY_SEQUENCE:
-                        process.store_data(sequence_number, post_data)
-                        while True:
-                            next_data = process.get_next_data()
-                            if next_data is None:
-                                break
-                            callback(True, "All processing succeeded", next_data)
-                            process.increase_finished_sequence_number()
+            elif mode == PipelineMode.FIRST_WINS:
+                with self._lock:
+                    last_finished_sequence_number = process.get_last_finished_sequence_number()
+                    if data_package.sequence_number <= last_finished_sequence_number:
+                        process.remove_data(data_package.sequence_number)
+                        # Remove from thread queue if not already running
+                        # callback(False, f"Data package with sequence number {data_package.sequence_number} is outdated, but was processed without errors", data_package)
+                        return
+                    process.set_last_finished_sequence_number(data_package.sequence_number)
+                    callback(True, f"Pipeline {self._name} succeeded", data_package)
+                    
+            elif mode == PipelineMode.NO_ORDER:
+                process.remove_data(data_package.sequence_number)
+                callback(True, f"Pipeline {self._name} succeeded", finished_data_package)
+                
+        pid = process.get_id() + "-" + str(data_package.sequence_number)
+        future = self.executor.submit(execute_pipeline)
+        if mode == PipelineMode.FIRST_WINS:
+            self.active_futures[pid] = future
+        print(f"Task {pid} submitted")
 
-                    elif self.mode == PipelineMode.FIRST_WINS:
-                        if sequence_number > process.get_finished_sequence_number():
-                            callback(True, "All processing succeeded", post_data)
-                            process.set_finished_sequence_number(sequence_number)
-                            del self.active_futures[sequence_number]
-                            for key, value in list(self.active_futures.items()):
-                                if key <= sequence_number:
-                                    if future.running():
-                                        running = value.cancel()
-                                        if running:
-                                            print(f"Cancel task {key}")
-                                        else:
-                                            print(f"Can not cancel task {key}. Already running")
-                                    del self.active_futures[key]
-                                
-            PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self.name).dec()
-            TOTAL_PIPELINE_TIME.labels(pipeline_name=self.name).observe(time.time()-start_time)
 
-        if not self.multithreading:
-            execute(-1)
-            return
 
-        sequence_number = process.get_sequence_number()
-        process.increase_sequence_number()
-        PIPELINE_WAITING_COUNTER.labels(pipeline_name=self.name).inc()
-        future = self.executor.submit(execute, sequence_number)
-        if self.mode == PipelineMode.FIRST_WINS:
-            self.active_futures[sequence_number] = future
-        print(f"Task {sequence_number} submitted")
 
-    def shutdown(self):
-        self.executor.shutdown(wait=False)
-        print("Executor shutdown")
+class TestPipelineProcess(unittest.TestCase):
+    def test_add_data(self) -> None:
+        pp = PipelineProcess()
+        pp.add_data("test_data_1")
+        pp.add_data("test_data_2")
+
+        self.assertEqual(len(pp._data_packages), 2)
+        self.assertEqual(pp._next_sequence_number, 2)
+
+    def test_push_finished_data_package(self) -> None:
+        pp = PipelineProcess()
+        pp.add_data("test_data_1")
+        pp.add_data("test_data_2")
+
+        pp.push_finished_data_package(0)
+        pp.push_finished_data_package(1)
+
+        self.assertEqual(len(pp._data_packages), 0)
+        self.assertEqual(len(pp._finished_data_packages), 2)
+
+    def test_pop_finished_data_packages(self) -> None:
+        pp = PipelineProcess()
+        pp.add_data("test_data_1")
+        pp.add_data("test_data_2")
+        pp.add_data("test_data_3")
+        pp.push_finished_data_package(0)
+        pp.push_finished_data_package(1)
+        pp.push_finished_data_package(2)
+
+        finished_packages = pp.pop_finished_data_packages()
+        pp.pop_finished_data_packages()
+
+        self.assertEqual(len(finished_packages), 3)
+        self.assertEqual(len(pp._finished_data_packages), 0)
+        self.assertEqual(pp._last_finished_sequence_number, 2)
+
+    def test_pop_partial_finished_data_packages(self) -> None:
+        pp = PipelineProcess()
+        pp.add_data("test_data_1")
+        pp.add_data("test_data_2")
+        pp.add_data("test_data_3")
+        pp.push_finished_data_package(0)
+        pp.push_finished_data_package(2)
+
+        finished_packages = pp.pop_finished_data_packages()
+        pp.pop_finished_data_packages()
+
+        self.assertEqual(len(finished_packages), 1)
+        self.assertEqual(len(pp._finished_data_packages), 1)
+        self.assertEqual(pp._last_finished_sequence_number, 0)
+        self.assertIn(2, pp._finished_data_packages)
+
+
+if __name__ == "__main__":
+    unittest.main()
