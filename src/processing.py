@@ -15,7 +15,7 @@ PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of ta
 PIPELINE_WAITING_COUNTER = Gauge('pipeline_waiting_counter', 'Number of tasks waiting to be executed', ['pipeline_name'])
 PIPELINE_WAITING_TIME = Summary('pipeline_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['pipeline_name'])
 
-class Processing:
+class PipelineProcessingPhase:
     """
     Class to manage and execute a sequence of modules.
     """
@@ -77,7 +77,7 @@ class Processing:
                 return False, f"Module {i} ({module_name}) failed with error: {str(e)}", result_data
         return True, "Processing succeeded", result_data
 
-class Process:
+class PipelineProcess:
     def __init__(self, id: int):
         self.id: int = id
         self.sequence_number_count: int = 0
@@ -118,27 +118,27 @@ class Process:
                 del self.stored_data[self.finished_sequence_number_count + 1]
             return data
 
-class ProcessingMode(Enum):
+class PipelineMode(Enum):
     ORDER_BY_SEQUENCE = 1
     FIRST_WINS = 2
     NO_ORDER = 3
 
-class ProcessingManager:
+class Pipeline:
     """
     Class to manage pre-processing, main processing, and post-processing stages.
     """
-    def __init__(self, name: str, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], max_workers: int = 10, mode: ProcessingMode = ProcessingMode.ORDER_BY_SEQUENCE):
+    def __init__(self, name: str, pre_modules: List[Any], main_modules: List[Any], post_modules: List[Any], max_workers: int = 10, mode: PipelineMode = PipelineMode.ORDER_BY_SEQUENCE):
         self.name = name
-        self.pre_processing = Processing(pre_modules)
-        self.main_processing = Processing(main_modules)
-        self.post_processing = Processing(post_modules)
+        self.pre_processing = PipelineProcessingPhase(pre_modules)
+        self.main_processing = PipelineProcessingPhase(main_modules)
+        self.post_processing = PipelineProcessingPhase(post_modules)
         if max_workers < 1:
             self.multithreading = False
             self.executor = None
         else:
             self.multithreading = True
             self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.process_map: Dict[int, Process] = {}
+        self.process_map: Dict[int, PipelineProcess] = {}
         self.mode = mode
         self.callback_lock = threading.Lock()
         self.active_futures: Dict[int, Future] = {}
@@ -160,7 +160,7 @@ class ProcessingManager:
         # Get process from self.process_map or add it by str(id(callback)) as id
         process = self.process_map.get(id(callback))
         if process is None:
-            process = Process(id(callback))
+            process = PipelineProcess(id(callback))
             self.process_map[id(callback)] = process
         
         waiting_time = time.time()
@@ -195,10 +195,10 @@ class ProcessingManager:
                 print(f"Task {sequence_number} completed")
                 
                 with self.callback_lock:
-                    if self.mode == ProcessingMode.NO_ORDER:
+                    if self.mode == PipelineMode.NO_ORDER:
                         callback(True, "All processing succeeded", post_data)
                     
-                    elif self.mode == ProcessingMode.ORDER_BY_SEQUENCE:
+                    elif self.mode == PipelineMode.ORDER_BY_SEQUENCE:
                         process.store_data(sequence_number, post_data)
                         while True:
                             next_data = process.get_next_data()
@@ -207,7 +207,7 @@ class ProcessingManager:
                             callback(True, "All processing succeeded", next_data)
                             process.increase_finished_sequence_number()
 
-                    elif self.mode == ProcessingMode.FIRST_WINS:
+                    elif self.mode == PipelineMode.FIRST_WINS:
                         if sequence_number > process.get_finished_sequence_number():
                             callback(True, "All processing succeeded", post_data)
                             process.set_finished_sequence_number(sequence_number)
@@ -233,7 +233,7 @@ class ProcessingManager:
         process.increase_sequence_number()
         PIPELINE_WAITING_COUNTER.labels(pipeline_name=self.name).inc()
         future = self.executor.submit(execute, sequence_number)
-        if self.mode == ProcessingMode.FIRST_WINS:
+        if self.mode == PipelineMode.FIRST_WINS:
             self.active_futures[sequence_number] = future
         print(f"Task {sequence_number} submitted")
 

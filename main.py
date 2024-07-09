@@ -1,7 +1,7 @@
 # main.py
 import random
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, ModuleOptions
-from src.processing import ProcessingManager
+from src.processing import Pipeline
 from prometheus_client import start_http_server
 import concurrent.futures
 import time
@@ -63,7 +63,7 @@ post_modules = [
     ])
 ]
 
-manager = ProcessingManager("test-pipeline", pre_modules, main_modules, post_modules)
+manager = Pipeline("test-pipeline", pre_modules, main_modules, post_modules)
 
 def callback(result, message, processed_data):
     print(result, message, processed_data)
