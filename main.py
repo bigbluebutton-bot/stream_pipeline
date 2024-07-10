@@ -1,5 +1,6 @@
 # main.py
 import random
+import threading
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, ModuleOptions
 from src.pipeline import Pipeline, PipelineMode
 from prometheus_client import start_http_server
@@ -67,14 +68,22 @@ post_modules = [
 manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 10, PipelineMode.ORDER_BY_SEQUENCE)
 
 counter = 0
-def callback(result, message, processed_data):
-    global counter
-    print(result, message, processed_data)
-    counter = counter + 1
+counter_mutex = threading.Lock()
+def callback(message, processed_data):
+    global counter, counter_mutex
+    print(message, processed_data)
+    with counter_mutex:
+        counter = counter + 1
+
+def error_callback(message, processed_data):
+    global counter, counter_mutex
+    print(f"ERROR: {message}, data: {processed_data}")
+    with counter_mutex:
+        counter = counter + 1
 
 # Function to execute the processing pipeline
 def process_data(data):
-    manager.run(data, callback)
+    manager.run(data, callback, error_callback)
 
 # Example data
 data_list = [

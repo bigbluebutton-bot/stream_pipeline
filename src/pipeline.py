@@ -297,12 +297,13 @@ class Pipeline:
         with self._lock:
             self._mode = mode
 
-    def run(self, data: Any, callback: Callable[[bool, str, DataPackage], None]) -> None:
+    def run(self, data: Any, callback: Callable[[str, DataPackage], None], error_callback: Callable[[str, DataPackage], None] = None) -> None:
         """
         Executes the pipeline with the given data.
         Args:
             data (Any): The data to process.
-            callback (Callable[[bool, str, DataPackage], None]): The callback function to call with the result.
+            callback (Callable[[str, DataPackage], None]): The callback function to call with the result.
+            error_callback (Callable[[str, DataPackage], None]): The callback function to call in case of an error. (Default: None)
         """
         callback_id = id(callback)
         with self._lock:
@@ -319,14 +320,14 @@ class Pipeline:
 
             success, message, result = executor.run(pipeline_processing_phases, data_package.sequence_number)
             if not success:
-                callback(False, message, result)
+                error_callback(message, result)
                 return
 
             if self._mode == PipelineMode.ORDER_BY_SEQUENCE:
                 executor.push_finished_data_package(data_package.sequence_number)
                 finished_data_packages = executor.pop_finished_data_packages()
                 for _, finished_data_package in finished_data_packages.items():
-                    callback(True, f"Pipeline {self._name} succeeded", finished_data_package)
+                    callback(f"Pipeline {self._name} succeeded", finished_data_package)
 
             elif self._mode == PipelineMode.FIRST_WINS:
                 with self._lock:
@@ -336,11 +337,11 @@ class Pipeline:
                         executor.remove_data(data_package.sequence_number)
                         return
                     executor.set_last_finished_sequence_number(data_package.sequence_number)
-                    callback(True, f"Pipeline {self._name} succeeded", data_package)
+                    callback(f"Pipeline {self._name} succeeded", data_package)
 
             elif self._mode == PipelineMode.NO_ORDER:
                 executor.remove_data(data_package.sequence_number)
-                callback(True, f"Pipeline {self._name} succeeded", data_package)
+                callback(f"Pipeline {self._name} succeeded", data_package)
 
         if self.executor is None:
             execute_pipeline()
