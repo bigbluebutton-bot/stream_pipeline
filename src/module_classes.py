@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 import threading
-from typing import Any, List, Tuple, final, NamedTuple
+from typing import Any, Dict, List, Tuple, final, NamedTuple
 import time
 import uuid
 from prometheus_client import Gauge, Summary
@@ -16,8 +16,12 @@ REQUEST_WAITING_COUNTER = Gauge('module_waiting_counter', 'Number of processes w
 class ModuleOptions(NamedTuple):
     """
     Named tuple to store options for modules.
+    Attributes:
+        use_mutex (bool): whether to use a mutex lock for thread safety (Default: True)
+        timeout (float): timeout to stop executing after x seconds. If 0.0, waits indefinitely (Default: 0.0)
     """
     use_mutex: bool = True
+    timeout: float = 0.0
 
 class Module(ABC):
     """
@@ -26,9 +30,10 @@ class Module(ABC):
     _locks = {}
 
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
-        self._id = "M-" + str(uuid.uuid4())
+        self._id = "M-" + self.__class__.__name__ + "-" + str(uuid.uuid4()) 
         self._name = name if name else self._id
-        self.use_mutex = options.use_mutex
+        self._use_mutex = options.use_mutex
+        self._timeout = options.timeout if options.timeout > 0.0 else None
 
     def get_id(self):
         return self._id
@@ -37,7 +42,7 @@ class Module(ABC):
         return self._name
 
     @property
-    def mutex(self):
+    def _mutex(self):
         """
         Provides a reentrant lock for each module instance.
         """
@@ -52,25 +57,48 @@ class Module(ABC):
         Measures and records the execution time and waiting time.
         """
         start_total_time = time.time()
-        if self.use_mutex:
+        if self._use_mutex:
             REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).inc()
-            self.mutex.acquire()
+            self._mutex.acquire()
             REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
             REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
-        module_name = self.__class__.__name__
         start_time = time.time()
+        
+        # Create a thread to execute the execute method
+        result_container: Dict[str, (Tuple[bool, str, Any])]  = {}
+        execute_thread = threading.Thread(target=self._execute_with_result, args=(data, result_container))
+        execute_thread.start()
+        execute_thread.join(self._timeout)
+
+        if execute_thread.is_alive():
+            if self._use_mutex:
+                self._mutex.release()
+            raise TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
+
+        success, message, data = result_container['result']
+        REQUEST_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_time)
+        
+        if not success:
+            if self._use_mutex:
+                self._mutex.release()
+            return False, message, data
+        
+        if self._use_mutex:
+            self._mutex.release()
+        REQUEST_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
+        
+        return success, message, data
+
+
+    def _execute_with_result(self, data, result_container):
+        """
+        Helper method to execute the `execute` method and store the result in a container.
+        """
         try:
-            result = self.execute(data)
-            REQUEST_PROCESSING_TIME.labels(module_name=module_name).observe(time.time() - start_time)
-            return result
+            result_container['result'] = self.execute(data)
         except Exception as e:
-            REQUEST_PROCESSING_TIME.labels(module_name=module_name).observe(time.time() - start_time)
-            raise e
-        finally:
-            if self.use_mutex:
-                self.mutex.release()
-            REQUEST_TOTAL_TIME.labels(module_name=module_name).observe(time.time() - start_total_time)
+            result_container['result'] = (False, str(e), None)
 
     @abstractmethod
     def execute(self, data) -> Tuple[bool, str, Any]:

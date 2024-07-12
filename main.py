@@ -21,6 +21,7 @@ class DataTransformationModule(ExecutionModule):
     def __init__(self):
         super().__init__(ModuleOptions(
             use_mutex=False,
+            timeout=2.0
         ))
 
     def execute(self, data):
