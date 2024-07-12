@@ -9,6 +9,7 @@ from prometheus_client import Gauge, Summary
 
 # Metrics to track time spent on processing modules
 REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
+REQUEST_PROCESSING_COUNTER = Gauge('module_processing_counter', 'Number of processes executing the module at the moment', ['module_name'])
 REQUEST_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['module_name'])
 REQUEST_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
 REQUEST_WAITING_COUNTER = Gauge('module_waiting_counter', 'Number of processes waiting to execute the task (mutex)', ['module_name'])
@@ -95,10 +96,13 @@ class Module(ABC):
         """
         Helper method to execute the `execute` method and store the result in a container.
         """
+        REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).inc()
         try:
             result_container['result'] = self.execute(data)
         except Exception as e:
             result_container['result'] = (False, str(e), None)
+        finally:
+            REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
     @abstractmethod
     def execute(self, data) -> Tuple[bool, str, Any]:
