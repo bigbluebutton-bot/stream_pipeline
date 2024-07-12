@@ -6,8 +6,12 @@ from typing import Any, Callable, Dict, List, Tuple
 import unittest
 from unittest.mock import MagicMock
 import uuid
+from prometheus_client import Gauge, Summary
 
 from .module_classes import Module
+
+
+PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of processes executing the pipline at the moment', ['pipeline_name'])
 
 
 @dataclass
@@ -305,6 +309,8 @@ class Pipeline:
             callback (Callable[[str, DataPackage], None]): The callback function to call with the result.
             error_callback (Callable[[str, DataPackage], None]): The callback function to call in case of an error. (Default: None)
         """
+        PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).inc()
+        
         callback_id = id(callback)
         with self._lock:
             executor = self._executor_map.get(callback_id)
@@ -321,9 +327,11 @@ class Pipeline:
             success, message, result = executor.run(pipeline_processing_phases, data_package.sequence_number)
             if not success:
                 error_callback(message, result)
+                PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
                 return
 
             if self._mode == PipelineMode.ORDER_BY_SEQUENCE:
+                print(f"{len(executor._finished_data_packages)}")
                 executor.push_finished_data_package(data_package.sequence_number)
                 finished_data_packages = executor.pop_finished_data_packages()
                 for _, finished_data_package in finished_data_packages.items():
@@ -335,13 +343,15 @@ class Pipeline:
                     if data_package.sequence_number <= last_finished_sequence_number:
                         self.active_futures.pop(f"{executor.get_id()}-{data_package.sequence_number}")
                         executor.remove_data(data_package.sequence_number)
-                        return
-                    executor.set_last_finished_sequence_number(data_package.sequence_number)
-                    callback(f"Pipeline {self._name} succeeded", data_package)
+                    else:
+                        executor.set_last_finished_sequence_number(data_package.sequence_number)
+                        callback(f"Pipeline {self._name} succeeded", data_package)
 
             elif self._mode == PipelineMode.NO_ORDER:
                 executor.remove_data(data_package.sequence_number)
                 callback(f"Pipeline {self._name} succeeded", data_package)
+                
+            PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
 
         if self.executor is None:
             execute_pipeline()
