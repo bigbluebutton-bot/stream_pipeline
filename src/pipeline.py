@@ -7,27 +7,12 @@ import unittest
 from unittest.mock import MagicMock
 import uuid
 from prometheus_client import Gauge, Summary
+from .data_package import DataPackage
 
 from .module_classes import Module
 
 
 PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of processes executing the pipline at the moment', ['pipeline_name'])
-
-
-@dataclass
-class DataPackage:
-    """
-    Class which contains the data and metadata for a pipeline process and will be passed through the pipeline and between modules.
-    Attributes:
-        id (str): Unique identifier for the data package.
-        pipeline_executer_id (str): ID of the pipeline executor handling this package.
-        sequence_number (int): The sequence number of the data package.
-        data (Any): The actual data contained in the package.
-    """
-    id: str
-    pipeline_executer_id: str
-    sequence_number: int
-    data: Any = None
 
 
 class PipelineProcessingPhase:

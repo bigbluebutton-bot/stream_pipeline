@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple, final, NamedTuple
 import time
 import uuid
 from prometheus_client import Gauge, Summary
+from .data_package import DataPackage
 
 # Metrics to track time spent on processing modules
 REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
