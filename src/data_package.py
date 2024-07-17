@@ -1,8 +1,16 @@
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 import threading
 import uuid
 import copy
+
+class DataPackageModule(Tuple):
+    module_id: str
+    start_time: float
+    end_time: float
+    waiting_time: float
+    execution_time: float
+    total_time: float
 
 @dataclass
 class DataPackage:
@@ -10,23 +18,28 @@ class DataPackage:
     Class which contains the data and metadata for a pipeline process and will be passed through the pipeline and between modules.
     Attributes:
         id (str) immutable:                     Unique identifier for the data package.
+        pipeline_id (str):                      ID of the pipeline handling this package.
         pipeline_executer_id (str) immutable:   ID of the pipeline executor handling this package.
         sequence_number (int):                  The sequence number of the data package.
+        modules (List[DataPackageModule]):      List of modules that have processed the data package. Including measurements.
         data (Any):                             The actual data contained in the package.
-        success (bool):                         Indicates if the process was successful.
-        message (str):                          Message related to the process.
+        success (bool):                         Indicates if the process was successful. If not successful, the error attribute should be set.
+        error (str):                            Error message if the process was not successful.
     """
     id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
+    pipline_id: str
     pipeline_executer_id: str
     sequence_number: int
+    modules: List[DataPackageModule] = field(default_factory=list)
     data: Any = None
     success: bool = False
-    message: str = ""
+    error: str = ""
 
     # Immutable attributes
     _immutable_attributes: list = field(default_factory=lambda: 
                                             [
                                                 'id',
+                                                'pipeline_id',
                                                 'pipeline_executer_id',
                                             ]
                                         )
@@ -81,11 +94,12 @@ class DataPackage:
 def main():
     # Create an instance of DataPackage
     package = DataPackage(
+        pipline_id="pipeline_1",
         pipeline_executer_id="executor_1",
         sequence_number=1,
         data={"key": "value"},
         success=True,
-        message="Process completed successfully."
+        error="No error"
     )
 
     # Access properties
@@ -94,7 +108,7 @@ def main():
     print(f"Sequence Number: {package.sequence_number}")
     print(f"Data: {package.data}")
     print(f"Success: {package.success}")
-    print(f"Message: {package.message}")
+    print(f"Error: {package.error}")
 
     # Attempt to modify the immutable id property (will raise an exception)
     try:
@@ -106,14 +120,14 @@ def main():
     package.sequence_number = 2
     package.data = {"new_key": "new_value"}
     package.success = False
-    package.message = "Process failed."
+    package.error = "Process failed."
 
     # Access modified properties
     print(f"Modified Pipeline Executor ID: {package.pipeline_executer_id}")
     print(f"Modified Sequence Number: {package.sequence_number}")
     print(f"Modified Data: {package.data}")
     print(f"Modified Success: {package.success}")
-    print(f"Modified Message: {package.message}")
+    print(f"Modified Error: {package.error}")
 
     # Adding new property
     package.new_property = "This is a new property"
@@ -127,7 +141,7 @@ def main():
     print(f"Sequence Number: {package2.sequence_number}")
     print(f"Data: {package2.data}")
     print(f"Success: {package2.success}")
-    print(f"Message: {package2.message}")
+    print(f"Error: {package2.error}")
 
     # Ensure the new property is also copied
     print(f"Copied New Property: {package2.new_property}")
