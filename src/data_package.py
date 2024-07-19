@@ -32,7 +32,7 @@ class DataPackage:
         error (Exception):                      Error message if the process was not successful.
     """
     id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
-    pipline_id: str
+    pipeline_id: str
     pipeline_executer_id: str
     sequence_number: int
     modules: List[DataPackageModule] = field(default_factory=list)
@@ -118,7 +118,7 @@ def worker(data_package):
 def main():
     # Create an instance of DataPackage
     package = DataPackage(
-        pipline_id="pipeline_1",
+        pipeline_id="pipeline_1",
         pipeline_executer_id="executor_1",
         sequence_number=1,
         data={"key": "value"},

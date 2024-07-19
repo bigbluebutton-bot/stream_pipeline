@@ -125,7 +125,7 @@ class PipelineExecutor:
         """
         with self._lock:
             data_package = DataPackage(
-                pipline_id=self._pipline_id,
+                pipeline_id=self._pipline_id,
                 pipeline_executer_id=self._id,
                 sequence_number=self._next_sequence_number,
                 data=data
