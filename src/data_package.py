@@ -1,16 +1,19 @@
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import threading
 import uuid
 import copy
 import time
 
-class DataPackageModule(Tuple):
+@dataclass
+class DataPackageModule:
     module_id: str
+    success: bool
+    error: Optional[Exception]
     start_time: float
     end_time: float
     waiting_time: float
-    execution_time: float
+    processing_time: float
     total_time: float
 
 @dataclass
@@ -40,7 +43,7 @@ class DataPackage:
     error: Exception = None
 
     # Immutable attributes
-    _immutable_attributes: list = field(default_factory=lambda: 
+    _immutable_attributes: List[str] = field(default_factory=lambda: 
                                             [
                                                 'id',
                                                 'pipeline_id',
@@ -49,7 +52,7 @@ class DataPackage:
                                         )
 
     # Mutexes for thread-safe property access
-    _mutexes: Dict[str, threading.Lock] = field(default_factory=dict, init=False)
+    _mutexes: dict = field(default_factory=dict, init=False)
 
     def __getattr__(self, name: str) -> Any:
         if '_mutexes' in self.__dict__:
@@ -96,6 +99,10 @@ class DataPackage:
     def copy(self):
         # Create a deep copy using the custom __deepcopy__ method
         return copy.deepcopy(self)
+
+
+
+
 
 # Example usage code
 def worker(data_package):

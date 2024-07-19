@@ -86,7 +86,7 @@ counter = 0
 counter_mutex = threading.Lock()
 def callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(processed_data.message, processed_data.data)
+    print(processed_data.message, processed_data)
     with counter_mutex:
         counter = counter + 1
 

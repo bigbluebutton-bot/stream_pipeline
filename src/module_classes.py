@@ -7,7 +7,7 @@ import time
 import uuid
 from prometheus_client import Gauge, Summary
 
-from .data_package import DataPackage
+from .data_package import DataPackage, DataPackageModule
 
 # Metrics to track time spent on processing modules
 REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
@@ -61,11 +61,36 @@ class Module(ABC):
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
         """
+        def create_module_data(start_time: float, start_total_time: float, end_time: float, waiting_time: float) -> None:
+            processing_time = time.time() - start_time
+            total_time = time.time() - start_total_time
+            
+            data_package.modules.append(DataPackageModule(
+                module_id=self._id,
+                success=data_package.success,
+                error=data_package.error,
+                start_time=start_time,
+                end_time=end_time,
+                waiting_time=waiting_time,
+                processing_time=processing_time,
+                total_time=total_time
+            ))
+
+            
+            if data_package.success:
+                REQUEST_PROCESSING_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(processing_time)
+                REQUEST_TOTAL_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(total_time)
+            
+            REQUEST_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(processing_time)
+            REQUEST_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(total_time)
+        
         start_total_time = time.time()
+        waiting_time = 0.0
         if self._use_mutex:
             REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).inc()
             self._mutex.acquire()
-            REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
+            waiting_time = time.time() - start_total_time
+            REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(waiting_time)
             REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
         start_time = time.time()
@@ -84,12 +109,11 @@ class Module(ABC):
         if thread_alive or not data_package.success:
             if self._use_mutex:
                 self._mutex.release()
-            REQUEST_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_time)
-            REQUEST_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
             if thread_alive:
                 te = TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
                 data_package.success = False
                 data_package.error = te
+                create_module_data(start_total_time, start_time, time.time(), waiting_time)
                 return
             else:
                 # Create a new error instance of the same type with additional information
@@ -97,17 +121,18 @@ class Module(ABC):
                 new_error.__cause__ = data_package.error
                 data_package.success = False
                 data_package.error = new_error
+                create_module_data(start_total_time, start_time, time.time(), waiting_time)
                 return
         
         
+        create_module_data(start_total_time, start_time, time.time(), waiting_time)
 
-        REQUEST_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_time)
-        REQUEST_PROCESSING_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(time.time() - start_time)
         
         if self._use_mutex:
             self._mutex.release()
-        REQUEST_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
-        REQUEST_TOTAL_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
+
+        
+        
 
 
     def _execute_with_result(self, data: DataPackage):
