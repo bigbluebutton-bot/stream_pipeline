@@ -86,13 +86,13 @@ counter = 0
 counter_mutex = threading.Lock()
 def callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(processed_data.message, processed_data)
+    print(f"OK: {processed_data.message}")
     with counter_mutex:
         counter = counter + 1
 
 def error_callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(f"ERROR: {processed_data.message}, data: {processed_data.data}: {processed_data.error}")
+    print(f"ERROR: {processed_data}, data: {processed_data.data}: {processed_data.error}")
     with counter_mutex:
         counter = counter + 1
 

@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field, asdict
+import json
 from typing import Any, Dict, List, Optional, Tuple
 import threading
 import uuid
 import copy
 import time
+
+from .error import json_error_handler_dict
 
 @dataclass
 class DataPackageModule:
@@ -100,8 +103,19 @@ class DataPackage:
         # Create a deep copy using the custom __deepcopy__ method
         return copy.deepcopy(self)
 
+    def __str__(self):
+        data_dict = {key: value for key, value in self.__dict__.items() if not key.startswith('_')}
+        data_dict['error'] = json_error_handler_dict(self.error) if self.error else "N/A"
+        data_dict['modules'] = [asdict(module) for module in data_dict['modules']]
 
+        # Handle non-serializable data
+        try:
+            jsonstring = json.dumps(data_dict, default=str, indent=4)
+        except (TypeError, ValueError):
+            data_dict['data'] = "Data which cannot be displayed as JSON"
+            jsonstring = json.dumps(data_dict, default=str, indent=4)
 
+        return jsonstring
 
 
 # Example usage code
@@ -116,6 +130,15 @@ def worker(data_package):
         print(e)
 
 def main():
+    data_package = DataPackage(
+        pipeline_id="pipeline_1",
+        pipeline_executer_id="executor_1",
+        sequence_number=1,
+        data=b'\x00\x01'  # Non-serializable data (bytes)
+    )
+
+    print(data_package)
+    
     # Create an instance of DataPackage
     package = DataPackage(
         pipeline_id="pipeline_1",

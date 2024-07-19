@@ -48,8 +48,8 @@ class ErrorLogger:
         with self._lock:
             return self.debug
 
-# Custom JSON error handler
-def json_error_handler(exc: BaseException) -> None:
+    
+def json_error_handler_dict(exc: BaseException) -> dict[str, Any]:
     error_logger = ErrorLogger()
     exc_type = type(exc)
     exc_value = exc
@@ -108,8 +108,11 @@ def json_error_handler(exc: BaseException) -> None:
             error_details["module_versions"] = {module: sys.modules[module].__version__ if hasattr(sys.modules[module], '__version__') else 'N/A' for module in sys.modules}
     else:
         error_details["message"] = "Something went wrong."
+    return error_details
 
-    error_json = json.dumps(error_details, indent=4)
+# Custom JSON error handler
+def json_error_handler(exc: BaseException) -> None:
+    error_json = json.dumps(json_error_handler_dict(exc), indent=4)
     print(error_json)
 
 # Set the custom error handler for uncaught exceptions
