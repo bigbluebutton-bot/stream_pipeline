@@ -110,11 +110,14 @@ class Module(ABC):
             if self._use_mutex:
                 self._mutex.release()
             if thread_alive:
-                te = TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
-                data_package.success = False
-                data_package.error = te
-                create_module_data(start_total_time, start_time, time.time(), waiting_time)
-                return
+                try:
+                    # Raise a TimeoutError to stop the thread
+                    raise TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
+                except TimeoutError as te:
+                    data_package.success = False
+                    data_package.error = te
+                    create_module_data(start_total_time, start_time, time.time(), waiting_time)
+                    return
             else:
                 # Create a new error instance of the same type with additional information
                 new_error = type(data_package.error)(f"Execution of module {self._name} failed with error: {str(data_package.error)}")
