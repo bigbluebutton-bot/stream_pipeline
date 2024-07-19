@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Tuple
 import threading
 import uuid
 import copy
+import time
 
 class DataPackageModule(Tuple):
     module_id: str
@@ -24,7 +25,8 @@ class DataPackage:
         modules (List[DataPackageModule]):      List of modules that have processed the data package. Including measurements.
         data (Any):                             The actual data contained in the package.
         success (bool):                         Indicates if the process was successful. If not successful, the error attribute should be set.
-        error (str):                            Error message if the process was not successful.
+        message (str):                          Info message.
+        error (Exception):                      Error message if the process was not successful.
     """
     id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
     pipline_id: str
@@ -32,8 +34,10 @@ class DataPackage:
     sequence_number: int
     modules: List[DataPackageModule] = field(default_factory=list)
     data: Any = None
-    success: bool = False
-    error: str = ""
+    running: bool = False
+    success: bool = True
+    message: str = ""
+    error: Exception = None
 
     # Immutable attributes
     _immutable_attributes: list = field(default_factory=lambda: 
@@ -91,6 +95,16 @@ class DataPackage:
         return copy.deepcopy(self)
 
 # Example usage code
+def worker(data_package):
+    try:
+        # Simulate work
+        time.sleep(5)
+        # Modify the data package
+        data_package.data = {"updated_key": "updated_value"}
+        print("DataPackage modified by worker thread.")
+    except RuntimeError as e:
+        print(e)
+
 def main():
     # Create an instance of DataPackage
     package = DataPackage(
@@ -102,6 +116,17 @@ def main():
         error="No error"
     )
 
+    # Start the worker thread
+    worker_thread = threading.Thread(target=worker, args=(package,))
+    worker_thread.timed_out = False
+    worker_thread.start()
+    worker_thread.join(timeout=1)  # Set timeout for the worker thread
+
+    # Check if the worker thread is still alive
+    if worker_thread.is_alive():
+        print("Worker thread timed out.")
+        worker_thread.timed_out = True
+
     # Access properties
     print(f"ID: {package.id}")
     print(f"Pipeline Executor ID: {package.pipeline_executer_id}")
@@ -110,41 +135,11 @@ def main():
     print(f"Success: {package.success}")
     print(f"Error: {package.error}")
 
-    # Attempt to modify the immutable id property (will raise an exception)
+    # Attempt to modify the package after timeout
     try:
-        package.id = "67890"
-    except AttributeError as e:
-        print(e)
-
-    # Modify other properties
-    package.sequence_number = 2
-    package.data = {"new_key": "new_value"}
-    package.success = False
-    package.error = "Process failed."
-
-    # Access modified properties
-    print(f"Modified Pipeline Executor ID: {package.pipeline_executer_id}")
-    print(f"Modified Sequence Number: {package.sequence_number}")
-    print(f"Modified Data: {package.data}")
-    print(f"Modified Success: {package.success}")
-    print(f"Modified Error: {package.error}")
-
-    # Adding new property
-    package.new_property = "This is a new property"
-    print(f"New Property: {package.new_property}")
-
-    print("------------------")
-    package2 = package.copy()
-    package.sequence_number = 3 # Modify the original package to ensure deep copy
-    print(f"ID: {package2.id}")
-    print(f"Pipeline Executor ID: {package2.pipeline_executer_id}")
-    print(f"Sequence Number: {package2.sequence_number}")
-    print(f"Data: {package2.data}")
-    print(f"Success: {package2.success}")
-    print(f"Error: {package2.error}")
-
-    # Ensure the new property is also copied
-    print(f"Copied New Property: {package2.new_property}")
+        package.sequence_number = 2
+    except RuntimeError as e:
+        print(f"Error in main thread: {e}")
 
 if __name__ == "__main__":
     main()

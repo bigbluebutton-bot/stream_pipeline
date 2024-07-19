@@ -39,25 +39,16 @@ class PipelineProcessingPhase:
         """
         return self._name
 
-    def run(self, data_package: DataPackage) -> Tuple[bool, str, DataPackage]:
+    def run(self, data_package: DataPackage):
         """
         Executes the pipeline processing phase with the given data package.
         Args:
             data_package (DataPackage): The data package to process.
-        Returns:
-            Tuple[bool, str, DataPackage]: Success flag, message, and the processed data package.
         """
-        data = data_package.data
         for module in self._modules:
-            try:
-                success, message, return_data = module.run(data)
-                if not success:
-                    return False, f"Module {module.get_name()} failed: {message}", data_package
-            except Exception as e:
-                return False, f"Module {module.get_name()} failed with error: {e}", data_package
-
-        data_package.data = return_data
-        return True, f"Modules {module.get_name()} succeeded", data_package
+            module.run(data_package)
+            if not data_package.success:
+                return
 
 
 class PipelineExecutor:
@@ -67,8 +58,9 @@ class PipelineExecutor:
         name (str): Name of the pipeline executor. (Default: PE-{id})
     """
     
-    def __init__(self, name: str = "") -> None:
+    def __init__(self, pipline_id: str, name: str = "") -> None:
         self._id = f"PE-{uuid.uuid4()}"
+        self._pipline_id = pipline_id
         self._name = name if name else self._id
         self._next_sequence_number = 0
         self._last_finished_sequence_number = -1
@@ -106,26 +98,22 @@ class PipelineExecutor:
             raise ValueError("Sequence number cannot be greater or equal than the next sequence number or smaller than the last finished sequence number.")
         self._last_finished_sequence_number = sequence_number
 
-    def run(self, pipeline_processing_phases: List[PipelineProcessingPhase], sequence_number: int) -> Tuple[bool, str, DataPackage]:
+    def run(self, pipeline_processing_phases: List[PipelineProcessingPhase], sequence_number: int) -> None:
         """
         Executes the pipeline process with the given data package.
         Args:
             pipeline_processing_phases (List[PipelineProcessingPhase]): List of processing phases to execute.
             sequence_number (int): The sequence number of the data package to process.
-        Returns:
-            Tuple[bool, str, DataPackage]: Success flag, message, and the processed data package.
         """
         with self._lock:
             data_package = self._data_packages.get(sequence_number)
             if not data_package:
-                return False, f"Data package with sequence number {sequence_number} not found. First add data with add_data(data: Any)", None
+                raise ValueError(f"Data package with sequence number {sequence_number} not found. First add data with add_data(data: Any)")
 
         for phase in pipeline_processing_phases:
-            success, message, result = phase.run(data_package)
-            if not success:
-                return False, f"Pipeline {self._name} failed: {message}", result
-
-        return True, "All pipeline phases succeeded", result
+            phase.run(data_package)
+            if not data_package.success:
+                return
 
     def add_data(self, data: Any) -> DataPackage:
         """
@@ -137,7 +125,7 @@ class PipelineExecutor:
         """
         with self._lock:
             data_package = DataPackage(
-                id= "DP-" + str(uuid.uuid4()),
+                pipline_id=self._pipline_id,
                 pipeline_executer_id=self._id,
                 sequence_number=self._next_sequence_number,
                 data=data
@@ -286,7 +274,7 @@ class Pipeline:
         with self._lock:
             self._mode = mode
 
-    def run(self, data: Any, callback: Callable[[str, DataPackage], None], error_callback: Callable[[str, DataPackage], None] = None) -> None:
+    def run(self, data: Any, callback: Callable[[DataPackage], None], error_callback: Callable[[DataPackage], None] = None) -> None:
         """
         Executes the pipeline with the given data.
         Args:
@@ -300,7 +288,7 @@ class Pipeline:
         with self._lock:
             executor = self._executor_map.get(callback_id)
             if executor is None:
-                executor = PipelineExecutor(name=f"PE-{self._name}-process-{callback_id}")
+                executor = PipelineExecutor(pipline_id=self._id, name=f"PE-{self._name}-process-{callback_id}")
                 self._executor_map[callback_id] = executor
 
         data_package = executor.add_data(data)
@@ -309,32 +297,36 @@ class Pipeline:
             with self._lock:
                 pipeline_processing_phases = [self._pre_modules, self._main_modules, self._post_modules]
 
-            success, message, result = executor.run(pipeline_processing_phases, data_package.sequence_number)
-            if not success:
-                error_callback(message, result)
-                PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
-                return
+            executor.run(pipeline_processing_phases, data_package.sequence_number)
 
             if self._mode == PipelineMode.ORDER_BY_SEQUENCE:
-                print(f"{len(executor._finished_data_packages)}")
                 executor.push_finished_data_package(data_package.sequence_number)
                 finished_data_packages = executor.pop_finished_data_packages()
                 for _, finished_data_package in finished_data_packages.items():
-                    callback(f"Pipeline {self._name} succeeded", finished_data_package)
+                    print(f"{finished_data_package.success}")
+                    if finished_data_package.success:
+                        callback(finished_data_package)
+                    else:
+                        error_callback(finished_data_package)
 
             elif self._mode == PipelineMode.FIRST_WINS:
                 with self._lock:
                     last_finished_sequence_number = executor.get_last_finished_sequence_number()
-                    if data_package.sequence_number <= last_finished_sequence_number:
+                    if data_package.sequence_number <= last_finished_sequence_number and data_package.success:
                         self.active_futures.pop(f"{executor.get_id()}-{data_package.sequence_number}")
                         executor.remove_data(data_package.sequence_number)
+                        if not data_package.success:
+                            error_callback(data_package.message, data_package.data)
                     else:
                         executor.set_last_finished_sequence_number(data_package.sequence_number)
-                        callback(f"Pipeline {self._name} succeeded", data_package)
+                        callback(data_package.data)
 
             elif self._mode == PipelineMode.NO_ORDER:
                 executor.remove_data(data_package.sequence_number)
-                callback(f"Pipeline {self._name} succeeded", data_package)
+                if data_package.success:
+                    callback(f"Pipeline {self._name} succeeded", data_package)
+                else:
+                    error_callback(data_package.message, data_package.data)
                 
             PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
 
@@ -397,13 +389,13 @@ class TestPipeline(unittest.TestCase):
         self.assertIn("Module MockExceptionModule failed with error", message)
 
     def test_pipeline_executor_add_data(self):
-        executor = PipelineExecutor(name="TestExecutor")
+        executor = PipelineExecutor(pipline_id="pipline_id", name="TestExecutor")
         data_package = executor.add_data("test_data")
         self.assertEqual(data_package.data, "test_data")
         self.assertEqual(data_package.sequence_number, 0)
 
     def test_pipeline_executor_run_success(self):
-        executor = PipelineExecutor(name="TestExecutor")
+        executor = PipelineExecutor(pipline_id="pipline_id", name="TestExecutor")
         data_package = executor.add_data("test_data")
         phase = PipelineProcessingPhase(modules=[self.mock_module], name="TestPhase")
         success, message, result = executor.run([phase], data_package.sequence_number)
@@ -411,7 +403,7 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(message, "All pipeline phases succeeded")
 
     def test_pipeline_executor_run_failure(self):
-        executor = PipelineExecutor(name="TestExecutor")
+        executor = PipelineExecutor(pipline_id="pipline_id", name="TestExecutor")
         data_package = executor.add_data("test_data")
         phase = PipelineProcessingPhase(modules=[self.mock_failing_module], name="TestPhase")
         success, message, result = executor.run([phase], data_package.sequence_number)
@@ -419,7 +411,7 @@ class TestPipeline(unittest.TestCase):
         self.assertIn("Pipeline TestExecutor failed", message)
 
     def test_pipeline_executor_run_exception(self):
-        executor = PipelineExecutor(name="TestExecutor")
+        executor = PipelineExecutor(pipline_id="pipline_id", name="TestExecutor")
         data_package = executor.add_data("test_data")
         phase = PipelineProcessingPhase(modules=[self.mock_exception_module], name="TestPhase")
         success, message, result = executor.run([phase], data_package.sequence_number)
