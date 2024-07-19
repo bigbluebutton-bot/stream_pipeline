@@ -73,9 +73,11 @@ class Module(ABC):
         # Create a thread to execute the execute method
         execute_thread = threading.Thread(target=self._execute_with_result, args=(data_package,))
         execute_thread.start_context = threading.current_thread().name
+        execute_thread.timed_out = False
         REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).inc()
         execute_thread.start()
         execute_thread.join(self._timeout)
+        execute_thread.timed_out = True
         REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
         thread_alive = execute_thread.is_alive()
