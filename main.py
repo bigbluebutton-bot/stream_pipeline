@@ -29,11 +29,11 @@ class DataTransformationModule(ExecutionModule):
     def __init__(self):
         super().__init__(ModuleOptions(
             use_mutex=False,
-            timeout=1.0
+            timeout=4.0
         ))
 
     def execute(self, data: DataPackage) -> None:
-        list1 = [2, 3, 4, 5, 6]
+        list1 = [1, 2, 3, 4, 5, 6]
         randomint = random.choice(list1)
         time.sleep(randomint)
         if "key" in data.data:
@@ -80,7 +80,7 @@ post_modules = [
 ]
 
 
-manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 1, PipelineMode.ORDER_BY_SEQUENCE)
+manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 10, PipelineMode.ORDER_BY_SEQUENCE)
 
 counter = 0
 counter_mutex = threading.Lock()
@@ -92,7 +92,7 @@ def callback(processed_data: DataPackage):
 
 def error_callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(f"ERROR: {processed_data.message}, data: {processed_data.data}")
+    print(f"ERROR: {processed_data.message}, data: {processed_data.data}: {processed_data.error}")
     with counter_mutex:
         counter = counter + 1
 

@@ -303,7 +303,6 @@ class Pipeline:
                 executor.push_finished_data_package(data_package.sequence_number)
                 finished_data_packages = executor.pop_finished_data_packages()
                 for _, finished_data_package in finished_data_packages.items():
-                    print(f"{finished_data_package.success}")
                     if finished_data_package.success:
                         callback(finished_data_package)
                     else:

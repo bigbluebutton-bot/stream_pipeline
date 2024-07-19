@@ -74,8 +74,6 @@ class DataPackage:
                 current_thread = threading.current_thread()
                 if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
                     raise RuntimeError("Modification not allowed: the thread handling this DataPackage has timed out.")
-                if name is "success":
-                    print(f"Write success: {value}")
                 super().__setattr__(name, value)
         else:
             super().__setattr__(name, value)

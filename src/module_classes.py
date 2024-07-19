@@ -87,7 +87,6 @@ class Module(ABC):
             REQUEST_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_time)
             REQUEST_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(time.time() - start_total_time)
             if thread_alive:
-                print("TIMEOUT")
                 te = TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
                 data_package.success = False
                 data_package.error = te
@@ -120,7 +119,7 @@ class Module(ABC):
         except Exception as e:
             current_thread = threading.current_thread()
             if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
-                print(f"WARNING: Execution of module {self._name} was interrupted due to timeout.")
+                # print(f"WARNING: Execution of module {self._name} was interrupted due to timeout.")
                 return
             data.success = False
             data.error = e
