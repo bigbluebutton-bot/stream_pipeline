@@ -293,7 +293,11 @@ class Pipeline:
 
         data_package = executor.add_data(data)
 
+        start_context = threading.current_thread().name
+
         def execute_pipeline() -> None:
+            threading.current_thread().start_context = start_context
+            
             with self._lock:
                 pipeline_processing_phases = [self._pre_modules, self._main_modules, self._post_modules]
 
