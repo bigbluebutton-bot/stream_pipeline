@@ -92,9 +92,15 @@ class DataPackage:
     # Mutexes for thread-safe property access
     _mutexes: Dict[str, threading.Lock] = field(default_factory=dict, init=False)
 
+    _mutex: threading.Lock = threading.Lock() # For locking all properties starts with _
+
     def __getattribute__(self, name: str) -> Any:
-        if name.startswith('_'): 
+        if name == '_mutex':
             return super().__getattribute__(name)
+
+        if name.startswith('_'): 
+            with self._mutex:
+                return super().__getattribute__(name)
         attr = super().__getattribute__(name)
         if isinstance(attr, types.MethodType):
             return attr
@@ -110,8 +116,9 @@ class DataPackage:
 
     def __setattribute__(self, name: str, value: Any):
         if name.startswith('_'):
-            super().__setattr__(name, value)
-            return
+            with self._mutex:
+                super().__setattr__(name, value)
+                return
         
         if '_immutable_attributes' in self.__dict__:
             for attr in self._immutable_attributes:
