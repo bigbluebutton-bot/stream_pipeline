@@ -55,9 +55,15 @@ class DataPackage:
                                         )
 
     # Mutexes for thread-safe property access
-    _mutexes: dict = field(default_factory=dict, init=False)
+    _mutexes: Dict[str, threading.Lock] = field(default_factory=dict, init=False)
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattribute__(self, name: str) -> Any:
+        if name.startswith('_'): 
+            return super().__getattribute__(name)
+        attr = super().__getattribute__(name)
+        if isinstance(attr, types.MethodType):
+            return attr
+
         if '_mutexes' in self.__dict__:
             if name not in self._mutexes:
                 self._mutexes[name] = threading.Lock()
@@ -67,7 +73,11 @@ class DataPackage:
         else:
             return super().__getattribute__(name)
 
-    def __setattr__(self, name: str, value: Any):
+    def __setattribute__(self, name: str, value: Any):
+        if name.startswith('_'):
+            super().__setattr__(name, value)
+            return
+        
         if '_immutable_attributes' in self.__dict__:
             for attr in self._immutable_attributes:
                 if name == attr and attr in self.__dict__:
