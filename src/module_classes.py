@@ -8,7 +8,7 @@ import uuid
 from prometheus_client import Gauge, Summary
 
 from .data_package import DataPackage, DataPackageModule
-from .error import Error
+from .error import Error, exception_to_error
 
 # Metrics to track time spent on processing modules
 REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
@@ -65,8 +65,6 @@ class Module(ABC):
         def create_module_data(start_time: float, start_total_time: float, end_time: float, waiting_time: float) -> None:
             processing_time = time.time() - start_time
             total_time = time.time() - start_total_time
-            
-            err: Union[Error, Exception, None] = data_package.error
 
             data_package.modules.append(DataPackageModule(
                 module_id=self._id,
@@ -76,7 +74,7 @@ class Module(ABC):
                 processing_time=processing_time,
                 total_time=total_time,
                 success=data_package.success,
-                error=err,
+                error=data_package.error,
             ))
 
             

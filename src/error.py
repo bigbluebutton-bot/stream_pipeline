@@ -72,7 +72,11 @@ def format_vars(variables: Dict[str, Any]) -> Dict[str, str]:
         formatted_vars[key] = f"{type(value).__name__} = {repr(value)}"
     return formatted_vars
 
-def exception_to_error(exc: BaseException) -> Error:
+def exception_to_error(exc: Union[BaseException, Error, None]) -> Union[Error, None]:
+    if exc is None:
+        return None
+    if isinstance(exc, Error):
+        return exc
     exc_type = type(exc)
     exc_value = exc
     exc_traceback = exc.__traceback__
@@ -119,7 +123,7 @@ def exception_to_error(exc: BaseException) -> Error:
 
     return error
 
-def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Dict[str, str]:
+def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Union[Dict[str, str], None]:
     if exc is None:
         return {}
 
@@ -127,6 +131,9 @@ def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Dict[str,
         error_obj = exception_to_error(exc)
     else:
         error_obj = exc
+
+    if error_obj is None:
+        return None
 
     error_logger = ErrorLogger()
     options = error_logger.get_options()

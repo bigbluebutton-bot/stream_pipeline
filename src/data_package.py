@@ -30,17 +30,7 @@ class DataPackageModule:
     processing_time: float
     total_time: float
     success: bool
-    error: Optional[Union[Exception, Error, None]]
-
-    def __post_init__(self):
-        if isinstance(self.error, Exception):
-            self.error = exception_to_error(self.error)
-
-    def __setattr__(self, name: str, value: Any) -> Any:
-        if name == 'error' and isinstance(value, Exception):
-            value = exception_to_error(value)
-        else:
-            super().__setattr__(name, value)
+    error: Union[Exception, Error, None] = None
 
 
 
@@ -148,7 +138,10 @@ class DataPackage:
     def __str__(self):
         data_dict = {key: value for key, value in self.__dict__.items() if not key.startswith('_')}
         data_dict['error'] = json_error_handler_dict(self.error) if self.error else None
-        data_dict['modules'] = [asdict(module) for module in data_dict['modules']]
+        data_dict['modules'] = [
+            {**asdict(module), 'error': json_error_handler_dict(module.error) if module.error else None} 
+            for module in data_dict['modules']
+        ]
 
         # Handle non-serializable data
         try:
@@ -158,6 +151,7 @@ class DataPackage:
             jsonstring = json.dumps(data_dict, default=str, indent=4)
 
         return jsonstring
+
 
 
 # Example usage code

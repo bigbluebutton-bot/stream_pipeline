@@ -296,42 +296,49 @@ class Pipeline:
         start_context = threading.current_thread().name
 
         def execute_pipeline() -> None:
-            threading.current_thread().start_context = start_context # type: ignore
-            
-            with self._lock:
-                pipeline_processing_phases = [self._pre_modules, self._main_modules, self._post_modules]
+            try:
+                threading.current_thread().start_context = start_context # type: ignore
+                
+                with self._lock:
+                    pipeline_processing_phases = [self._pre_modules, self._main_modules, self._post_modules]
 
-            executor.run(pipeline_processing_phases, data_package.sequence_number)
+                executor.run(pipeline_processing_phases, data_package.sequence_number)
 
-            if self._mode == PipelineMode.ORDER_BY_SEQUENCE:
-                executor.push_finished_data_package(data_package.sequence_number)
-                finished_data_packages = executor.pop_finished_data_packages()
-                for _, finished_data_package in finished_data_packages.items():
-                    if finished_data_package.success:
-                        callback(finished_data_package)
+                if self._mode == PipelineMode.ORDER_BY_SEQUENCE:
+                    executor.push_finished_data_package(data_package.sequence_number)
+                    finished_data_packages = executor.pop_finished_data_packages()
+                    for _, finished_data_package in finished_data_packages.items():
+                        if finished_data_package.success:
+                            callback(finished_data_package)
+                        else:
+                            if error_callback:
+                                error_callback(finished_data_package)
+
+                elif self._mode == PipelineMode.FIRST_WINS:
+                    with self._lock:
+                        last_finished_sequence_number = executor.get_last_finished_sequence_number()
+                        if data_package.sequence_number <= last_finished_sequence_number and data_package.success:
+                            self.active_futures.pop(f"{executor.get_id()}-{data_package.sequence_number}")
+                            executor.remove_data(data_package.sequence_number)
+                            if not data_package.success:
+                                error_callback(data_package.message, data_package.data)
+                        else:
+                            executor.set_last_finished_sequence_number(data_package.sequence_number)
+                            callback(data_package.data)
+
+                elif self._mode == PipelineMode.NO_ORDER:
+                    executor.remove_data(data_package.sequence_number)
+                    if data_package.success:
+                        callback(data_package)
                     else:
                         if error_callback:
-                            error_callback(finished_data_package)
-
-            elif self._mode == PipelineMode.FIRST_WINS:
-                with self._lock:
-                    last_finished_sequence_number = executor.get_last_finished_sequence_number()
-                    if data_package.sequence_number <= last_finished_sequence_number and data_package.success:
-                        self.active_futures.pop(f"{executor.get_id()}-{data_package.sequence_number}")
-                        executor.remove_data(data_package.sequence_number)
-                        if not data_package.success:
-                            error_callback(data_package.message, data_package.data)
-                    else:
-                        executor.set_last_finished_sequence_number(data_package.sequence_number)
-                        callback(data_package.data)
-
-            elif self._mode == PipelineMode.NO_ORDER:
-                executor.remove_data(data_package.sequence_number)
-                if data_package.success:
-                    callback(data_package)
-                else:
-                    if error_callback:
-                        error_callback(data_package.data)
+                            error_callback(data_package.data)
+            
+            except Exception as e:
+                data_package.success = False
+                data_package.error = e
+                if error_callback:
+                    error_callback(data_package)
                 
             PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
 
