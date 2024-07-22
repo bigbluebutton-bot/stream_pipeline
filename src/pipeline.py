@@ -2,7 +2,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 import threading
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Union
 import unittest
 from unittest.mock import MagicMock
 import uuid
@@ -155,7 +155,7 @@ class PipelineExecutor:
                 data_package = self._data_packages.pop(sequence_number)
                 self._finished_data_packages[sequence_number] = data_package
 
-    def pop_finished_data_packages(self) -> Dict[uuid.UUID, DataPackage]:
+    def pop_finished_data_packages(self) -> Dict[str, DataPackage]:
         """
         Returns a dict of finished data packages in order of sequence number until the first missing sequence number and removes them from the queue.
         Example:
@@ -163,10 +163,10 @@ class PipelineExecutor:
                 -> Returns: [1, 2]
             Queue left: [5, 6, 7]
         Returns:
-            Dict[uuid.UUID, DataPackage]: Dictionary of finished data packages.
+            Dict[str, DataPackage]: Dictionary of finished data packages.
         """
         with self._lock:
-            finished_data_packages = {}
+            finished_data_packages: Dict[str, DataPackage] = {}
             current_sequence = self._last_finished_sequence_number + 1
 
             while current_sequence in self._finished_data_packages:
@@ -274,7 +274,7 @@ class Pipeline:
         with self._lock:
             self._mode = mode
 
-    def run(self, data: Any, callback: Callable[[DataPackage], None], error_callback: Callable[[DataPackage], None] = None) -> None:
+    def run(self, data: Any, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
         """
         Executes the pipeline with the given data.
         Args:
@@ -296,7 +296,7 @@ class Pipeline:
         start_context = threading.current_thread().name
 
         def execute_pipeline() -> None:
-            threading.current_thread().start_context = start_context
+            threading.current_thread().start_context = start_context # type: ignore
             
             with self._lock:
                 pipeline_processing_phases = [self._pre_modules, self._main_modules, self._post_modules]
@@ -310,7 +310,8 @@ class Pipeline:
                     if finished_data_package.success:
                         callback(finished_data_package)
                     else:
-                        error_callback(finished_data_package)
+                        if error_callback:
+                            error_callback(finished_data_package)
 
             elif self._mode == PipelineMode.FIRST_WINS:
                 with self._lock:
@@ -327,9 +328,10 @@ class Pipeline:
             elif self._mode == PipelineMode.NO_ORDER:
                 executor.remove_data(data_package.sequence_number)
                 if data_package.success:
-                    callback(f"Pipeline {self._name} succeeded", data_package)
+                    callback(data_package)
                 else:
-                    error_callback(data_package.message, data_package.data)
+                    if error_callback:
+                        error_callback(data_package.data)
                 
             PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
 

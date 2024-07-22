@@ -119,7 +119,10 @@ def exception_to_error(exc: BaseException) -> Error:
 
     return error
 
-def json_error_handler_dict(exc: Union[BaseException, Error]) -> Dict[str, str]:
+def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Dict[str, str]:
+    if exc is None:
+        return {}
+
     if isinstance(exc, BaseException):
         error_obj = exception_to_error(exc)
     else:
@@ -138,33 +141,33 @@ def json_error_handler_dict(exc: Union[BaseException, Error]) -> Dict[str, str]:
         if options.message:
             minimal_error_info["message"] = error_obj.message
         if options.traceback:
-            minimal_error_info["traceback"] = error_obj.traceback
+            minimal_error_info["traceback"] = error_obj.traceback # type: ignore
         if options.thread:
-            minimal_error_info["thread"] = error_obj.thread
+            minimal_error_info["thread"] = error_obj.thread # type: ignore
         if options.start_context:
-            minimal_error_info["start_context"] = error_obj.start_context
+            minimal_error_info["start_context"] = error_obj.start_context # type: ignore
         if options.thread_id:
-            minimal_error_info["thread_id"] = error_obj.thread_id
+            minimal_error_info["thread_id"] = error_obj.thread_id # type: ignore
         if options.is_daemon:
-            minimal_error_info["is_daemon"] = error_obj.is_daemon
+            minimal_error_info["is_daemon"] = error_obj.is_daemon # type: ignore
         if options.local_vars:
-            minimal_error_info["local_vars"] = error_obj.local_vars
+            minimal_error_info["local_vars"] = error_obj.local_vars # type: ignore
         if options.global_vars:
-            minimal_error_info["global_vars"] = error_obj.global_vars
+            minimal_error_info["global_vars"] = error_obj.global_vars # type: ignore
         if options.environment_vars:
-            minimal_error_info["environment_vars"] = error_obj.environment_vars
+            minimal_error_info["environment_vars"] = error_obj.environment_vars # type: ignore
         if options.module_versions:
-            minimal_error_info["module_versions"] = error_obj.module_versions
+            minimal_error_info["module_versions"] = error_obj.module_versions # type: ignore
 
     return minimal_error_info
 
-def json_error_handler_str(exc: Union[BaseException, Error]) -> str:
+def json_error_handler_str(exc: Union[BaseException, Error, None]) -> str:
     minimal_error_info = json_error_handler_dict(exc) 
     error_json = json.dumps(minimal_error_info, indent=4)
     return error_json
 
 # Custom JSON error handler
-def json_error_handler(exc: Union[BaseException, Error]) -> None:
+def json_error_handler(exc: Union[BaseException, Error, None]) -> None:
     error_json = json_error_handler_str(exc)
     print(error_json)
 
@@ -214,20 +217,20 @@ if __name__ == "__main__":
 
     def thread_level_2() -> None:
         thread3 = threading.Thread(target=thread_level_3, name="Thread-Level-3")
-        thread3.start_context = threading.current_thread().name
+        thread3.start_context = threading.current_thread().name # type: ignore
         thread3.start()
         thread3.join()
 
     def thread_level_1() -> None:
         thread2 = threading.Thread(target=thread_level_2, name="Thread-Level-2")
-        thread2.start_context = threading.current_thread().name
+        thread2.start_context = threading.current_thread().name # type: ignore
         thread2.start()
         thread2.join()
 
     # Start the top-level thread
     print(f"-------------------In Thread-------------------")
     thread1 = threading.Thread(target=thread_level_1, name="Thread-Level-1")
-    thread1.start_context = threading.current_thread().name
+    thread1.start_context = threading.current_thread().name # type: ignore
     thread1.start()
     thread1.join()
     print("-----------------------------------------------\n")

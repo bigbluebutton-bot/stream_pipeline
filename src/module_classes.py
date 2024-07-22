@@ -2,12 +2,13 @@
 
 from abc import ABC, abstractmethod
 import threading
-from typing import Any, Dict, List, Tuple, final, NamedTuple
+from typing import Any, Dict, List, Tuple, Union, final, NamedTuple
 import time
 import uuid
 from prometheus_client import Gauge, Summary
 
 from .data_package import DataPackage, DataPackageModule
+from .error import Error
 
 # Metrics to track time spent on processing modules
 REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
@@ -32,7 +33,7 @@ class Module(ABC):
     """
     Abstract base class for modules.
     """
-    _locks = {}
+    _locks: Dict[int, threading.RLock] = {}
 
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
         self._id = "M-" + self.__class__.__name__ + "-" + str(uuid.uuid4()) 
@@ -65,15 +66,17 @@ class Module(ABC):
             processing_time = time.time() - start_time
             total_time = time.time() - start_total_time
             
+            err: Union[Error, Exception, None] = data_package.error
+
             data_package.modules.append(DataPackageModule(
                 module_id=self._id,
-                success=data_package.success,
-                error=data_package.error,
                 start_time=start_time,
                 end_time=end_time,
                 waiting_time=waiting_time,
                 processing_time=processing_time,
-                total_time=total_time
+                total_time=total_time,
+                success=data_package.success,
+                error=err,
             ))
 
             
@@ -97,18 +100,16 @@ class Module(ABC):
         
         # Create a thread to execute the execute method
         execute_thread = threading.Thread(target=self._execute_with_result, args=(data_package,))
-        execute_thread.start_context = threading.current_thread().name
-        execute_thread.timed_out = False
+        execute_thread.start_context = threading.current_thread().name # type: ignore
+        execute_thread.timed_out = False # type: ignore
         REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).inc()
         execute_thread.start()
         execute_thread.join(self._timeout)
-        execute_thread.timed_out = True
+        execute_thread.timed_out = True # type: ignore
         REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
         thread_alive = execute_thread.is_alive()
-        if thread_alive or not data_package.success:
-            if self._use_mutex:
-                self._mutex.release()
+        if thread_alive:
             if thread_alive:
                 try:
                     # Raise a TimeoutError to stop the thread
@@ -116,16 +117,6 @@ class Module(ABC):
                 except TimeoutError as te:
                     data_package.success = False
                     data_package.error = te
-                    create_module_data(start_total_time, start_time, time.time(), waiting_time)
-                    return
-            else:
-                # Create a new error instance of the same type with additional information
-                new_error = type(data_package.error)(f"Execution of module {self._name} failed with error: {str(data_package.error)}")
-                new_error.__cause__ = data_package.error
-                data_package.success = False
-                data_package.error = new_error
-                create_module_data(start_total_time, start_time, time.time(), waiting_time)
-                return
         
         
         create_module_data(start_total_time, start_time, time.time(), waiting_time)
