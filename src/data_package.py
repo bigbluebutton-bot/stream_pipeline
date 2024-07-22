@@ -53,7 +53,7 @@ class DataPackage:
     pipeline_id: str
     pipeline_executer_id: str
     sequence_number: int
-    modules: List[Any] = field(default_factory=list)  # Replace Any with DataPackageModule if defined
+    modules: List[DataPackageModule] = field(default_factory=list)  # Replace Any with DataPackageModule if defined
     data: Any = None
     running: bool = False
     success: bool = True
