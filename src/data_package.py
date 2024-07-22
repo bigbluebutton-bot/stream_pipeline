@@ -114,7 +114,7 @@ class DataPackage:
         else:
             return super().__getattribute__(name)
 
-    def __setattribute__(self, name: str, value: Any):
+    def __setattr__(self, name: str, value: Any):
         if name.startswith('_'):
             with self._mutex:
                 super().__setattr__(name, value)
