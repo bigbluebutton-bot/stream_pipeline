@@ -38,7 +38,7 @@ class ErrorLoggerOptions(NamedTuple):
     module_versions: bool = False
 
 class ErrorLogger:
-    _instance = None
+    _instance = None # type: ignore
     _lock = threading.Lock()
 
     def __new__(cls):
