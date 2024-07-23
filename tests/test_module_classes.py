@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 import unittest
 from module_classes import Module, ExecutionModule, ConditionModule, CombinationModule
-from processing import Processing, ProcessingManager
+from pipeline import PipelineProcessingPhase, Pipeline
 
 class SimpleExecutionModule(ExecutionModule):
     def execute(self, data):
@@ -20,7 +20,7 @@ class TestModules(unittest.TestCase):
         self.simple_module = SimpleExecutionModule()
         self.true_condition_module = AlwaysTrueConditionModule(self.simple_module, self.simple_module)
         self.combination_module = CombinationModule([self.simple_module, self.simple_module])
-        self.processing_manager = ProcessingManager([self.simple_module], [self.simple_module], [self.simple_module])
+        self.processing_manager = Pipeline([self.simple_module], [self.simple_module], [self.simple_module])
 
     def test_simple_execution_module(self):
         result, message, data = self.simple_module.execute(1)
@@ -47,7 +47,7 @@ class TestModules(unittest.TestCase):
         self.assertEqual(data, 3)
 
     def test_processing(self):
-        processing = Processing([self.simple_module, self.simple_module])
+        processing = PipelineProcessingPhase([self.simple_module, self.simple_module])
         result, message, data = processing.execute(1)
         self.assertTrue(result)
         self.assertEqual(message, "Processing succeeded")
@@ -64,7 +64,7 @@ class TestModules(unittest.TestCase):
             def execute(self, data):
                 return False, "ERROR", data
 
-        processing_manager = ProcessingManager([FailingModule()], [self.simple_module], [self.simple_module])
+        processing_manager = Pipeline([FailingModule()], [self.simple_module], [self.simple_module])
         result, message, data = processing_manager.run(1)
         self.assertFalse(result)
         self.assertEqual(message, "Pre-processing failed: Module 0 (FailingModule) failed: ERROR")
@@ -75,7 +75,7 @@ class TestModules(unittest.TestCase):
             def execute(self, data):
                 return False, "ERROR", data
 
-        processing_manager = ProcessingManager([self.simple_module], [FailingModule()], [self.simple_module])
+        processing_manager = Pipeline([self.simple_module], [FailingModule()], [self.simple_module])
         result, message, data = processing_manager.run(1)
         self.assertFalse(result)
         self.assertEqual(message, "Main processing failed: Module 0 (FailingModule) failed: ERROR")
@@ -86,7 +86,7 @@ class TestModules(unittest.TestCase):
             def execute(self, data):
                 return False, "ERROR", data
 
-        processing_manager = ProcessingManager([self.simple_module], [self.simple_module], [FailingModule()])
+        processing_manager = Pipeline([self.simple_module], [self.simple_module], [FailingModule()])
         result, message, data = processing_manager.run(1)
         self.assertFalse(result)
         self.assertEqual(message, "Post-processing failed: Module 0 (FailingModule) failed: ERROR")
