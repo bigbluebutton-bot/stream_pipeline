@@ -115,21 +115,25 @@ class PipelineExecutor:
             if not data_package.success:
                 return
 
-    def add_data(self, data: Any) -> DataPackage:
+    def add_data(self, data: Union[DataPackage, Any]) -> DataPackage:
         """
         Adds a new data package to the executor.
         Args:
-            data (Any): The data to include in the new data package.
+            data (Union[DataPackage, Any]): The data to add to the executor. Can be an instance of DataPackage from gRPC or any other data.
         Returns:
             DataPackage: The newly created data package.
         """
-        with self._lock:
+        if isinstance(data, DataPackage):
+            data_package = data
+        else:
             data_package = DataPackage(
                 pipeline_id=self._pipline_id,
                 pipeline_executer_id=self._id,
                 sequence_number=self._next_sequence_number,
                 data=data
             )
+
+        with self._lock:
             self._data_packages[self._next_sequence_number] = data_package
             self._next_sequence_number += 1
             return data_package
