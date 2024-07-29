@@ -42,7 +42,7 @@ class ModuleServiceStub(object):
         self.run = channel.unary_unary(
                 '/data.ModuleService/run',
                 request_serializer=data_pb2.DataPackage.SerializeToString,
-                response_deserializer=data_pb2.DataPackage.FromString,
+                response_deserializer=data_pb2.ReturnDPandError.FromString,
                 _registered_method=True)
 
 
@@ -61,7 +61,7 @@ def add_ModuleServiceServicer_to_server(servicer, server):
             'run': grpc.unary_unary_rpc_method_handler(
                     servicer.run,
                     request_deserializer=data_pb2.DataPackage.FromString,
-                    response_serializer=data_pb2.DataPackage.SerializeToString,
+                    response_serializer=data_pb2.ReturnDPandError.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -90,7 +90,7 @@ class ModuleService(object):
             target,
             '/data.ModuleService/run',
             data_pb2.DataPackage.SerializeToString,
-            data_pb2.DataPackage.FromString,
+            data_pb2.ReturnDPandError.FromString,
             options,
             channel_credentials,
             insecure,

@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 import threading
-from typing import  Dict, List, Tuple, Union, final, NamedTuple
+from typing import  Any, Dict, List, Tuple, Union, final, NamedTuple
 import time
 import uuid
 import grpc # type: ignore
@@ -10,7 +10,7 @@ from prometheus_client import Gauge, Summary
 
 from . import data_pb2
 from . import data_pb2_grpc
-
+from .error import Error
 from .data_package import DataPackage, DataPackageModule
 
 # Metrics to track time spent on processing modules
@@ -255,4 +255,10 @@ class ExternalModule(Module):
             data_grpc = data.to_grpc()
             response = stub.run(data_grpc)
 
-            data.set_from_grpc(response)
+            if response.error:
+                er = Error()
+                er.set_from_grpc(response.error)
+                exc = er.to_remote_exception()
+                raise exc
+
+            data.set_from_grpc(response.data_package)

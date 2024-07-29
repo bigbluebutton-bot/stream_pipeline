@@ -44,8 +44,12 @@ class DataPackageModule (ThreadSafeClass):
         self.processing_time = grpc_module.processing_time
         self.total_time = grpc_module.total_time
         self.success = grpc_module.success
-        er = Error()
-        self.error = er.set_from_grpc(grpc_module.error) if grpc_module.HasField('error') else None
+        if grpc_module.HasField('error'):
+            er = Error()
+            er.set_from_grpc(grpc_module.error)
+            self.error = er
+        else:
+            self.error = None
 
     def to_grpc(self):
         grpc_module = data_pb2.DataPackageModule()
@@ -104,6 +108,7 @@ class DataPackage (ThreadSafeClass):
         self.pipeline_executer_id = grpc_package.pipeline_executer_id
         self.sequence_number = grpc_package.sequence_number
 
+        self.modules = []
         for module in grpc_package.modules:
             if module:
                 md = DataPackageModule()
@@ -115,6 +120,7 @@ class DataPackage (ThreadSafeClass):
         self.success = grpc_package.success
         self.message = grpc_package.message
 
+        self.errors = []
         for error in grpc_package.errors:
             if error:
                 er = Error()

@@ -44,8 +44,13 @@ message DataPackage {
     repeated Error errors = 10;
 }
 
+message ReturnDPandError {
+    DataPackage data_package = 1;
+    Error error = 2;
+}
+
 service ModuleService {
-  rpc run (DataPackage) returns (DataPackage);
+  rpc run (DataPackage) returns (ReturnDPandError);
 }
 
 
