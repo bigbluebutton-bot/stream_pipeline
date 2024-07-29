@@ -296,6 +296,7 @@ class Pipeline:
                 self._executor_map[callback_id] = executor
 
         data_package = executor.add_data(data)
+        data_package.running = True
 
         start_context = threading.current_thread().name
 
@@ -340,11 +341,12 @@ class Pipeline:
             
             except Exception as e:
                 data_package.success = False
-                data_package.error = e
+                data_package.errors.append(e)
                 if error_callback:
                     error_callback(data_package)
                 
             PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
+            data_package.running = False
 
         if self.executor is None:
             execute_pipeline()

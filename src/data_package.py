@@ -109,6 +109,7 @@ class DataPackageModule (ThreadSafeClass):
     Class which contains metadata for a module that has processed a data package.
     Attributes:
         module_id (str):            ID of the module.
+        running (bool):             Indicates if the module is running.
         start_time (float):         Time when the module was started.
         end_time (float):           Time when the module finished.
         waiting_time (float):       Time spent waiting for the mutex to unlock.
@@ -118,6 +119,7 @@ class DataPackageModule (ThreadSafeClass):
         error (Exception or Error): Contains the error. Can be set as type Exception or Error and will be converted to Error.
     """
     module_id: str = field(default_factory=lambda: "Module-" + str(uuid.uuid4()))
+    running: bool = False
     start_time: float = 0.0
     end_time: float = 0.0
     waiting_time: float = 0.0
@@ -141,7 +143,7 @@ class DataPackage (ThreadSafeClass):
         data (Any):                             The actual data contained in the package.
         success (bool):                         Indicates if the process was successful. If not successful, the error attribute should be set.
         message (str):                          Info message.
-        error (Error):                          Error message if the process was not successful.
+        errors (Error):                         List of errors that occurred during the processing of the data package.
     """
     id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
     pipeline_id: str = ""
@@ -152,7 +154,7 @@ class DataPackage (ThreadSafeClass):
     running: bool = False
     success: bool = True
     message: str = ""
-    error: Optional[Union[Error, Exception, None]] = None
+    errors: List[Union[Error, Exception, None]] = field(default_factory=list)
 
     # Immutable attributes
     _immutable_attributes: List[str] = field(default_factory=lambda: 
