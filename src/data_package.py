@@ -15,15 +15,16 @@ class DataPackageModule (ThreadSafeClass):
     """
     Class which contains metadata for a module that has processed a data package.
     Attributes:
-        module_id (str):            ID of the module.
-        running (bool):             Indicates if the module is running.
-        start_time (float):         Time when the module was started.
-        end_time (float):           Time when the module finished.
-        waiting_time (float):       Time spent waiting for the mutex to unlock.
-        processing_time (float):    Time spent processing the data package.
-        total_time (float):         Total time spent processing the data package.
-        success (bool):             Indicates if the process was successful.
-        error (Exception or Error): Contains the error. Can be set as type Exception or Error and will be converted to Error.
+        module_id (str):                        ID of the module.
+        running (bool):                         Indicates if the module is running.
+        start_time (float):                     Time when the module was started.
+        end_time (float):                       Time when the module finished.
+        waiting_time (float):                   Time spent waiting for the mutex to unlock.
+        processing_time (float):                Time spent processing the data package.
+        total_time (float):                     Total time spent processing the data package.
+        sub_modules (List[DataPackageModule]):  List of sub-modules that have processed the data package. Including measurements.
+        success (bool):                         Indicates if the process was successful.
+        error (Exception or Error):             Contains the error. Can be set as type Exception or Error and will be converted to Error.
     """
     module_id: str = field(default_factory=lambda: "Module-" + str(uuid.uuid4()))
     running: bool = False
@@ -32,6 +33,7 @@ class DataPackageModule (ThreadSafeClass):
     waiting_time: float = 0.0
     processing_time: float = 0.0
     total_time: float = 0.0
+    sub_modules: List['DataPackageModule'] = field(default_factory=list)
     success: bool = True
     error: Union[Exception, Error, None] = None
 
@@ -42,6 +44,14 @@ class DataPackageModule (ThreadSafeClass):
         self.end_time = grpc_module.end_time
         self.waiting_time = grpc_module.waiting_time
         self.processing_time = grpc_module.processing_time
+
+        self.sub_modules = []
+        for module in grpc_module.sub_modules:
+            if module:
+                md = DataPackageModule()
+                md.set_from_grpc(module)
+                self.sub_modules.append(md)
+
         self.total_time = grpc_module.total_time
         self.success = grpc_module.success
         if grpc_module.HasField('error'):

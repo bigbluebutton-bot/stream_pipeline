@@ -59,7 +59,7 @@ class Module(ABC):
             self._locks[id(self)] = threading.RLock()
         return self._locks[id(self)]
 
-    def run(self, data_package: DataPackage) -> None:
+    def run(self, data_package: DataPackage, parent_module: Union[DataPackageModule, None] = None) -> None:
         """
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
@@ -76,7 +76,11 @@ class Module(ABC):
                 error=None,
             )
         
-        data_package.modules.append(dpm)
+        # Add the module to the parent module if it exists
+        if parent_module:
+            parent_module.sub_modules.append(dpm)
+        else:
+            data_package.modules.append(dpm)
         
         start_total_time = time.time()
         waiting_time = 0.0
@@ -143,7 +147,7 @@ class Module(ABC):
         Helper method to execute the `execute` method and store the result in a container.
         """
         try:
-            self.execute(data)
+            self.execute(data, dpm)
         except Exception as e:
             current_thread = threading.current_thread()
             if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
@@ -153,10 +157,10 @@ class Module(ABC):
             dpm.error = e
 
     @abstractmethod
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, data_package_module: Union[DataPackageModule, None] = None) -> None:
         """
         Abstract method to be implemented by subclasses.
-        Performs an operation on the data input and returns a tuple (bool, str, Any).
+        Performs an operation on the data package.
         """
         pass
 
@@ -168,7 +172,7 @@ class ExecutionModule(Module, ABC):
     Abstract class for modules that perform specific execution tasks.
     """
     @abstractmethod
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, data_package_module: Union[DataPackageModule, None] = None) -> None:
         """
         Method to be implemented by subclasses for specific execution logic.
         """
@@ -192,24 +196,14 @@ class ConditionModule(Module, ABC):
         return True
 
     @final
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         """
         Executes the true_module if condition is met, otherwise executes the false_module.
         """
         if self.condition(data):
-            try:
-                self.true_module.run(data)
-            except Exception as e:
-                # Create a new error instance of the same type with additional information
-                new_error = type(e)(f"True module failed with error: {str(e)}")
-                data.errors.append(new_error)
+            self.true_module.run(data, dpm)
         else:
-            try:
-                self.false_module.run(data)
-            except Exception as e:
-                # Create a new error instance of the same type with additional information
-                new_error = type(e)(f"False module failed with error: {str(e)}")
-                data.errors.append(new_error)
+            self.false_module.run(data, dpm)
 
 class CombinationModule(Module):
     """
@@ -221,20 +215,13 @@ class CombinationModule(Module):
         self.modules = modules
     
     @final
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         """
         Executes each module in the list sequentially, passing the output of one as the input to the next.
         """
-        result_data = data
         for i, module in enumerate(self.modules):
-            try:
-                module.run(result_data)
-                if not result_data.success:
-                    break
-            except Exception as e:
-                # Create a new error instance of the same type with additional information
-                new_error = type(e)(f"Combination module {i} ({module.__class__.__name__}) failed with error: {str(e)}")
-                data.errors.append(new_error)
+            module.run(data, dpm)
+            if not data.success:
                 break
 
 
@@ -248,7 +235,7 @@ class ExternalModule(Module):
         self.port: int = port
 
     @final
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         address = f"{self.host}:{self.port}"
         with grpc.insecure_channel(address) as channel:
             stub = data_pb2_grpc.ModuleServiceStub(channel)

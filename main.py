@@ -1,6 +1,8 @@
 # main.py
 import random
 import threading
+from typing import Union
+from src.data_package import DataPackageModule
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
 from src.pipeline import Pipeline, PipelineMode
 from prometheus_client import start_http_server
@@ -17,7 +19,7 @@ start_http_server(8000)
 
 # Example custom modules
 class DataValidationModule(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         if isinstance(data.data, dict) and "key" in data.data:
             data.success = True
             data.message = "Validation succeeded"
@@ -32,7 +34,7 @@ class DataTransformationModule(ExecutionModule):
             timeout=4.0
         ))
 
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         list1 = [1, 2, 3, 4, 5, 6]
         randomint = random.choice(list1)
         time.sleep(randomint)
@@ -49,19 +51,19 @@ class DataConditionModule(ConditionModule):
         return "condition" in data.data and data.data["condition"] == True
 
 class SuccessModule(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         data.data["status"] = "success"
         data.success = True
         data.message = "Condition true: success"
 
 class FailureModule(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         data.data["status"] = "failure"
         data.success = True
         data.message = "Condition false: failure"
 
 class AlwaysTrue(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
         data.success = True
         data.message = "Always true"
 
@@ -71,8 +73,8 @@ pre_modules: list[Module] = [
     DataValidationModule()
     ]
 main_modules: list[Module] = [
-    DataTransformationModule(),
     DataConditionModule(SuccessModule(), FailureModule()),
+    DataTransformationModule(),
 ]
 post_modules: list[Module] = [
     CombinationModule([
