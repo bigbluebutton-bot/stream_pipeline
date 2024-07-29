@@ -6,12 +6,14 @@ import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any, Dict, List, NamedTuple, Optional, Union
+from .thread_safe_class import ThreadSafeClass
+
 
 @dataclass
-class Error:
-    type: str
-    message: str
-    traceback: List[str]
+class Error (ThreadSafeClass):
+    type: str = ""
+    message: str = ""
+    traceback: List[str] = field(default_factory=list)
     thread: Optional[str] = None
     start_context: Optional[str] = None
     thread_id: Optional[int] = None
