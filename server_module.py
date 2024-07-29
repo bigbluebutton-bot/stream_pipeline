@@ -1,4 +1,4 @@
-import grpc
+import grpc # type: ignore
 from concurrent import futures
 import time
 from typing import Any, Tuple, Union
