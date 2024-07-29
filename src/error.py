@@ -6,6 +6,8 @@ import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any, Dict, List, NamedTuple, Optional, Union
+
+from . import data_pb2
 from .thread_safe_class import ThreadSafeClass
 
 
@@ -25,6 +27,38 @@ class Error (ThreadSafeClass):
 
     def __str__(self) -> str:
         return json_error_handler_str(self)
+    
+    def set_from_grpc(self, grpc_error):
+        self.type=grpc_error.type,
+        self.message=grpc_error.message,
+        self.traceback=grpc_error.traceback,
+        self.thread=grpc_error.thread if grpc_error.HasField('thread') else None,
+        self.start_context=grpc_error.start_context if grpc_error.HasField('start_context') else None,
+        self.thread_id=grpc_error.thread_id if grpc_error.HasField('thread_id') else None,
+        self.is_daemon=grpc_error.is_daemon if grpc_error.HasField('is_daemon') else None,
+        self.local_vars=dict(grpc_error.local_vars),
+        self.global_vars=dict(grpc_error.global_vars),
+        self.environment_vars=dict(grpc_error.environment_vars),
+        self.module_versions=dict(grpc_error.module_versions)
+
+    def to_grpc(self):
+        grpc_error = data_pb2.Error()
+        grpc_error.type = self.type
+        grpc_error.message = self.message
+        grpc_error.traceback.extend(self.traceback)
+        if self.thread is not None:
+            grpc_error.thread = self.thread
+        if self.start_context is not None:
+            grpc_error.start_context = self.start_context
+        if self.thread_id is not None:
+            grpc_error.thread_id = self.thread_id
+        if self.is_daemon is not None:
+            grpc_error.is_daemon = self.is_daemon
+        grpc_error.local_vars.update(self.local_vars)
+        grpc_error.global_vars.update(self.global_vars)
+        grpc_error.environment_vars.update(self.environment_vars)
+        grpc_error.module_versions.update(self.module_versions)
+        return grpc_error
 
 class ErrorLoggerOptions(NamedTuple):
     exc_type: bool = True
