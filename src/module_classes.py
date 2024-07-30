@@ -239,7 +239,9 @@ class ExternalModule(Module):
         address = f"{self.host}:{self.port}"
         with grpc.insecure_channel(address) as channel:
             stub = data_pb2_grpc.ModuleServiceStub(channel)
-            data_grpc = data.to_grpc()
+            dp_grpc = data.to_grpc()
+            dpm_grpc = dpm.to_grpc() if dpm else None
+            data_grpc = data_pb2.RequestDPandDPM(data_package=dp_grpc, data_package_module=dpm_grpc) # type: ignore
             response = stub.run(data_grpc)
 
             if response.error:

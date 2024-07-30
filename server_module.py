@@ -3,16 +3,25 @@ from concurrent import futures
 import time
 from typing import Any, Tuple, Union
 
-from src.data_package import DataPackage
+from src.data_package import DataPackage, DataPackageModule
 from src.error import Error, exception_to_error
 
 from src import data_pb2  # Correct import statement
 from src import data_pb2_grpc  # Correct import statement
 
-def grpc_to_normal(request_grpc: Any) -> DataPackage:
-    request = DataPackage()
-    request.set_from_grpc(request_grpc)
-    return request
+def grpc_to_normal(request_grpc: Any) -> Tuple[DataPackage, Union[None, DataPackageModule]]:
+    dp = DataPackage()
+    dp.set_from_grpc(request_grpc.data_package)
+    dpm = DataPackageModule()
+    dpm.set_from_grpc(request_grpc.data_package_module)
+
+    # find the dpm in dp.modules and set it to dpm so they are the same object
+    for module in dp.modules:
+        if module.module_id == dpm.module_id:
+            dpm = module
+            break
+
+    return dp, dpm
 
 def normal_to_grpc(request: DataPackage, error: Union[None, Exception, Error] = None) -> Any:
     error_grpc: Union[None, Any] = None
@@ -29,20 +38,20 @@ def normal_to_grpc(request: DataPackage, error: Union[None, Exception, Error] = 
     return return_dp_and_error
 
 class ModuleServiceServicer(data_pb2_grpc.ModuleServiceServicer):
-    def run(self, request_grpc: data_pb2.DataPackage, context: grpc.ServicerContext) -> data_pb2.ReturnDPandError:  # type: ignore
+    def run(self, request_grpc: data_pb2.RequestDPandDPM, context: grpc.ServicerContext) -> data_pb2.ReturnDPandError:  # type: ignore
         testerror: Union[None, Exception, Error] = None
         try:
-            request = grpc_to_normal(request_grpc)
+            data_package, data_package_module = grpc_to_normal(request_grpc)
 
-            request.success = False
-            request.message = "This is a test message"
+            data_package.message = "This is a test message"
+            print(data_package_module)
 
             raise ValueError("This is a test error")
         except Exception as e:
             testerror = e
 
         try:
-            return_dp_and_error = normal_to_grpc(request, testerror)
+            return_dp_and_error = normal_to_grpc(data_package, testerror)
             return return_dp_and_error
         except Exception as e:
             print(exception_to_error(e))
