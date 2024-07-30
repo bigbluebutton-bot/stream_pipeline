@@ -22,10 +22,10 @@ class TestModule(ExecutionModule):
         if "key" in data.data:
             data.data["key"] = data.data["key"].upper() + " transformed"
             dpm.success = True
-            data.message = "Transformation succeeded"
+            dpm.message = "Transformation succeeded"
         else:
             dpm.success = False
-            data.message = "Transformation failed: key missing"
+            dpm.message = "Transformation failed: key missing"
 
 # Example usage
 module = TestModule()

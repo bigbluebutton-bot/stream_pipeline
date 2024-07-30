@@ -23,6 +23,7 @@ class DataPackageModule(ThreadSafeClass):
         processing_time (float):                Time spent processing the data package.
         total_time (float):                     Total time spent processing the data package.
         sub_modules (List[DataPackageModule]):  List of sub-modules that have processed the data package. Including measurements.
+        message (str):                          Info message.
         success (bool):                         Indicates if the process was successful.
         error (Exception or Error):             Contains the error. Can be set as type Exception or Error and will be converted to Error.
     """
@@ -34,6 +35,7 @@ class DataPackageModule(ThreadSafeClass):
     processing_time: float = 0.0
     total_time: float = 0.0
     sub_modules: List['DataPackageModule'] = field(default_factory=list)
+    message: str = ""
     success: bool = True
     error: Union[Exception, Error, None] = None
 
@@ -56,6 +58,7 @@ class DataPackageModule(ThreadSafeClass):
                     new_sub_module.set_from_grpc(module)
                     self.sub_modules.append(new_sub_module)
 
+        self.message = grpc_module.message
         self.success = grpc_module.success
         if grpc_module.HasField('error'):
             if self.error is None:
@@ -74,6 +77,7 @@ class DataPackageModule(ThreadSafeClass):
         grpc_module.processing_time = self.processing_time
         grpc_module.total_time = self.total_time
         grpc_module.sub_modules.extend([module.to_grpc() for module in self.sub_modules])
+        grpc_module.message = self.message
         grpc_module.success = self.success
         if isinstance(self.error, Error):
             grpc_module.error.CopyFrom(self.error.to_grpc())
@@ -91,7 +95,6 @@ class DataPackage (ThreadSafeClass):
         modules (List[DataPackageModule]):      List of modules that have processed the data package. Including measurements.
         data (Any):                             The actual data contained in the package.
         success (bool):                         Indicates if the process was successful. If not successful, the error attribute should be set.
-        message (str):                          Info message.
         errors (Error):                         List of errors that occurred during the processing of the data package.
     """
     id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
@@ -102,7 +105,6 @@ class DataPackage (ThreadSafeClass):
     data: Any = None
     running: bool = False
     success: bool = True
-    message: str = ""
     errors: List[Union[Error, Exception, None]] = field(default_factory=list)
 
     # Immutable attributes
@@ -135,7 +137,6 @@ class DataPackage (ThreadSafeClass):
         self.data = pickle.loads(grpc_package.data)
         self.running = grpc_package.running
         self.success = grpc_package.success
-        self.message = grpc_package.message
 
         self.errors = []
         for error in grpc_package.errors:
@@ -155,6 +156,5 @@ class DataPackage (ThreadSafeClass):
         grpc_package.data = pickle.dumps(self.data)
         grpc_package.running = self.running
         grpc_package.success = self.success
-        grpc_package.message = self.message
         grpc_package.errors.extend([error.to_grpc() for error in self.errors if isinstance(error, Error)])
         return grpc_package

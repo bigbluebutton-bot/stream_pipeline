@@ -22,10 +22,10 @@ class DataValidationModule(ExecutionModule):
     def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         if isinstance(data.data, dict) and "key" in data.data:
             data.success = True
-            data.message = "Validation succeeded"
+            dpm.message = "Validation succeeded"
         else:
             data.success = False
-            data.message = "Validation failed: key missing"
+            dpm.message = "Validation failed: key missing"
 
 class DataTransformationModule(ExecutionModule):
     def __init__(self):
@@ -41,10 +41,10 @@ class DataTransformationModule(ExecutionModule):
         if "key" in data.data:
             data.data["key"] = data.data["key"].upper()
             data.success = True
-            data.message = "Transformation succeeded"
+            dpm.message = "Transformation succeeded"
         else:
             data.success = False
-            data.message = "Transformation failed: key missing"
+            dpm.message = "Transformation failed: key missing"
 
 class DataConditionModule(ConditionModule):
     def condition(self, data: DataPackage) -> bool:
@@ -54,18 +54,18 @@ class SuccessModule(ExecutionModule):
     def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.data["status"] = "success"
         data.success = True
-        data.message = "Condition true: success"
+        dpm.message = "Condition true: success"
 
 class FailureModule(ExecutionModule):
     def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.data["status"] = "failure"
         data.success = True
-        data.message = "Condition false: failure"
+        dpm.message = "Condition false: failure"
 
 class AlwaysTrue(ExecutionModule):
     def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.success = True
-        data.message = "Always true"
+        dpm.message = "Always true"
 
 # Setting up the processing pipeline
 pre_modules: list[Module] = [
@@ -85,13 +85,13 @@ post_modules: list[Module] = [
 ]
 
 
-manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 1, PipelineMode.ORDER_BY_SEQUENCE)
+manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 10, PipelineMode.ORDER_BY_SEQUENCE)
 
 counter = 0
 counter_mutex = threading.Lock()
 def callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(f"OK: {processed_data.message}")
+    print(f"OK: {processed_data.data}")
     with counter_mutex:
         counter = counter + 1
 

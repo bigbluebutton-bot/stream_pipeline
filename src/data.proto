@@ -27,8 +27,9 @@ message DataPackageModule {
     double processing_time = 6;
     double total_time = 7;
     repeated DataPackageModule sub_modules = 8;
-    bool success = 9;
-    Error error = 10;
+    string message = 9;
+    bool success = 10;
+    Error error = 11;
 }
 
 // DataPackage message definition
@@ -41,8 +42,7 @@ message DataPackage {
     bytes data = 6;
     bool running = 7;
     bool success = 8;
-    string message = 9;
-    repeated Error errors = 10;
+    repeated Error errors = 9;
 }
 
 message RequestDPandDPM {
