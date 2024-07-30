@@ -44,6 +44,7 @@ class DataPackageModule (ThreadSafeClass):
         self.end_time = grpc_module.end_time
         self.waiting_time = grpc_module.waiting_time
         self.processing_time = grpc_module.processing_time
+        self.total_time = grpc_module.total_time
 
         self.sub_modules = []
         for module in grpc_module.sub_modules:
@@ -52,7 +53,6 @@ class DataPackageModule (ThreadSafeClass):
                 md.set_from_grpc(module)
                 self.sub_modules.append(md)
 
-        self.total_time = grpc_module.total_time
         self.success = grpc_module.success
         if grpc_module.HasField('error'):
             er = Error()
@@ -70,6 +70,7 @@ class DataPackageModule (ThreadSafeClass):
         grpc_module.waiting_time = self.waiting_time
         grpc_module.processing_time = self.processing_time
         grpc_module.total_time = self.total_time
+        grpc_module.sub_modules.extend([module.to_grpc() for module in self.sub_modules])
         grpc_module.success = self.success
         if isinstance(self.error, Error):
             grpc_module.error.CopyFrom(self.error.to_grpc())
