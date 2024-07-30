@@ -67,7 +67,6 @@ class ModuleServiceServicer(ModuleServiceServicerBase):
             
             # Convert the result back to gRPC response
             return_dp_and_error = normal_to_grpc(data_package)
-            print(return_dp_and_error)
             return return_dp_and_error
         except Exception as e:
             # In case of any exception, convert it to a gRPC response

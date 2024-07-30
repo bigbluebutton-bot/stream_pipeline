@@ -97,7 +97,7 @@ def callback(processed_data: DataPackage):
 
 def error_callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(f"ERROR: {processed_data}, data: {processed_data.data}: {processed_data.errors}")
+    print(f"ERROR: {processed_data}")
     with counter_mutex:
         counter = counter + 1
 

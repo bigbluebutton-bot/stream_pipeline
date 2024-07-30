@@ -250,10 +250,8 @@ class ExternalModule(Module):
             # print(f"Fields of response.error: {response.error.ListFields()}")
 
             if response.error and response.error.ListFields():
-                print(f"Error: {response.error}")
                 error = Error()
                 error.set_from_grpc(response.error)
                 raise error.to_exception()
             else:
                 data.set_from_grpc(response.data_package)
-                print(f"dpm: {dpm}")
