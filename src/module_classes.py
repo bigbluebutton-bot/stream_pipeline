@@ -10,7 +10,7 @@ from prometheus_client import Gauge, Summary
 
 from . import data_pb2
 from . import data_pb2_grpc
-from .error import Error
+from .error import Error, exception_to_error
 from .data_package import DataPackage, DataPackageModule
 
 # Metrics to track time spent on processing modules
@@ -113,7 +113,7 @@ class Module(ABC):
                     raise TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
                 except TimeoutError as te:
                     dpm.success = False
-                    dpm.error = te
+                    dpm.error = exception_to_error(te)
 
         if not dpm.success:
             data_package.success = False
@@ -154,7 +154,7 @@ class Module(ABC):
                 # print(f"WARNING: Execution of module {self._name} was interrupted due to timeout.")
                 return
             dpm.success = False
-            dpm.error = e
+            dpm.error = exception_to_error(e)
 
     @abstractmethod
     def execute(self, data: DataPackage, data_package_module: DataPackageModule) -> None:
