@@ -21,11 +21,11 @@ message Error {
 message DataPackageModule {
     string module_id = 1;
     bool running = 2;
-    float start_time = 3;
-    float end_time = 4;
-    float waiting_time = 5;
-    float processing_time = 6;
-    float total_time = 7;
+    double start_time = 3;
+    double end_time = 4;
+    double waiting_time = 5;
+    double processing_time = 6;
+    double total_time = 7;
     repeated DataPackageModule sub_modules = 8;
     bool success = 9;
     Error error = 10;
