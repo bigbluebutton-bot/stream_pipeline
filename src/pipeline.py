@@ -326,10 +326,10 @@ class Pipeline:
                             self.active_futures.pop(f"{executor.get_id()}-{data_package.sequence_number}")
                             executor.remove_data(data_package.sequence_number)
                             if not data_package.success:
-                                error_callback(data_package.message, data_package.data)
+                                error_callback(data_package)
                         else:
                             executor.set_last_finished_sequence_number(data_package.sequence_number)
-                            callback(data_package.data)
+                            callback(data_package)
 
                 elif self._mode == PipelineMode.NO_ORDER:
                     executor.remove_data(data_package.sequence_number)
@@ -337,7 +337,7 @@ class Pipeline:
                         callback(data_package)
                     else:
                         if error_callback:
-                            error_callback(data_package.data)
+                            error_callback(data_package)
             
             except Exception as e:
                 data_package.success = False
