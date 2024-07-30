@@ -11,7 +11,7 @@ from .error import Error
 
 
 @dataclass
-class DataPackageModule (ThreadSafeClass):
+class DataPackageModule(ThreadSafeClass):
     """
     Class which contains metadata for a module that has processed a data package.
     Attributes:
@@ -46,18 +46,21 @@ class DataPackageModule (ThreadSafeClass):
         self.processing_time = grpc_module.processing_time
         self.total_time = grpc_module.total_time
 
-        self.sub_modules = []
+        existing_sub_modules = {sub_module.module_id: sub_module for sub_module in self.sub_modules}
         for module in grpc_module.sub_modules:
             if module:
-                md = DataPackageModule()
-                md.set_from_grpc(module)
-                self.sub_modules.append(md)
+                if module.module_id in existing_sub_modules:
+                    existing_sub_modules[module.module_id].set_from_grpc(module)
+                else:
+                    new_sub_module = DataPackageModule()
+                    new_sub_module.set_from_grpc(module)
+                    self.sub_modules.append(new_sub_module)
 
         self.success = grpc_module.success
         if grpc_module.HasField('error'):
-            er = Error()
-            er.set_from_grpc(grpc_module.error)
-            self.error = er
+            if self.error is None:
+                self.error = Error()
+            self.error.set_from_grpc(grpc_module.error)
         else:
             self.error = None
 
@@ -95,7 +98,7 @@ class DataPackage (ThreadSafeClass):
     pipeline_id: str = ""
     pipeline_executer_id: str = ""
     sequence_number: int = -1
-    modules: List[DataPackageModule] = field(default_factory=list)  # Replace Any with DataPackageModule if defined
+    modules: List[DataPackageModule] = field(default_factory=list)
     data: Any = None
     running: bool = False
     success: bool = True
@@ -104,12 +107,12 @@ class DataPackage (ThreadSafeClass):
 
     # Immutable attributes
     _immutable_attributes: List[str] = field(default_factory=lambda: 
-                                            [
-                                                'id',
-                                                'pipeline_id',
-                                                'pipeline_executer_id',
-                                            ]
-                                        )
+                                                [
+                                                    'id',
+                                                    'pipeline_id',
+                                                    'pipeline_executer_id',
+                                                ]
+                                            )
     
     def set_from_grpc(self, grpc_package):
         temp_immutable_attributes = self._immutable_attributes
@@ -119,12 +122,15 @@ class DataPackage (ThreadSafeClass):
         self.pipeline_executer_id = grpc_package.pipeline_executer_id
         self.sequence_number = grpc_package.sequence_number
 
-        self.modules = []
+        existing_modules = {module.module_id: module for module in self.modules}
         for module in grpc_package.modules:
             if module:
-                md = DataPackageModule()
-                md.set_from_grpc(module)
-                self.modules.append(md)
+                if module.module_id in existing_modules:
+                    existing_modules[module.module_id].set_from_grpc(module)
+                else:
+                    new_module = DataPackageModule()
+                    new_module.set_from_grpc(module)
+                    self.modules.append(new_module)
 
         self.data = pickle.loads(grpc_package.data)
         self.running = grpc_package.running
