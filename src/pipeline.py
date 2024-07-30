@@ -309,6 +309,8 @@ class Pipeline:
 
                 executor.run(pipeline_processing_phases, data_package.sequence_number)
 
+                data_package.running = False
+
                 if self._mode == PipelineMode.ORDER_BY_SEQUENCE:
                     executor.push_finished_data_package(data_package.sequence_number)
                     finished_data_packages = executor.pop_finished_data_packages()
@@ -346,7 +348,6 @@ class Pipeline:
                     error_callback(data_package)
                 
             PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
-            data_package.running = False
 
         if self.executor is None:
             execute_pipeline()
