@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package data;
+
+// Error message definition
+message Error {
+    string id = 1;
+    string type = 2;
+    string message = 3;
+    repeated string traceback = 4;
+    string thread = 5;
+    string start_context = 6;
+    int64 thread_id = 7;
+    bool is_daemon = 8;
+    map<string, string> local_vars = 9;
+    map<string, string> global_vars = 10;
+    map<string, string> environment_vars = 11;
+    map<string, string> module_versions = 12;
+}
+
+// DataPackageModule message definition
+message DataPackageModule {
+    string module_id = 1;
+    bool running = 2;
+    double start_time = 3;
+    double end_time = 4;
+    double waiting_time = 5;
+    double processing_time = 6;
+    double total_time = 7;
+    repeated DataPackageModule sub_modules = 8;
+    string message = 9;
+    bool success = 10;
+    Error error = 11;
+}
+
+// DataPackage message definition
+message DataPackage {
+    string id = 1;
+    string pipeline_id = 2;
+    string pipeline_executer_id = 3;
+    int32 sequence_number = 4;
+    repeated DataPackageModule modules = 5;
+    bytes data = 6;
+    bool running = 7;
+    bool success = 8;
+    repeated Error errors = 9;
+}
+
+message RequestDPandDPM {
+    DataPackage data_package = 1;
+    DataPackageModule data_package_module = 2;
+}
+
+message ReturnDPandError {
+    DataPackage data_package = 1;
+    Error error = 2;
+}
+
+service ModuleService {
+  rpc run (RequestDPandDPM) returns (ReturnDPandError);
+}
+
+
+// // ErrorLoggerOptions message definition
+// message ErrorLoggerOptions {
+//     bool exc_type = 1;
+//     bool message = 2;
+//     bool traceback = 3;
+//     bool thread = 4;
+//     bool start_context = 5;
+//     bool thread_id = 6;
+//     bool is_daemon = 7;
+//     bool local_vars = 8;
+//     bool global_vars = 9;
+//     bool environment_vars = 10;
+//     bool module_versions = 11;
+// }

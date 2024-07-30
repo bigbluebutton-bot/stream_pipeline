@@ -1,41 +1,94 @@
-from dataclasses import dataclass, field, asdict
-import json
-import types
-from typing import Any, Dict, List, Optional, Tuple, Union
-import threading
+from dataclasses import dataclass, field
+import pickle
+from typing import Any, List, Union
 import uuid
-import copy
-import time
 
-from .error import exception_to_error, json_error_handler_dict, Error
+from . import data_pb2
+
+from .thread_safe_class import ThreadSafeClass
+from .error import Error, exception_to_error
+
+
 
 @dataclass
-class DataPackageModule:
+class DataPackageModule(ThreadSafeClass):
     """
     Class which contains metadata for a module that has processed a data package.
     Attributes:
-        module_id (str):            ID of the module.
-        start_time (float):         Time when the module was started.
-        end_time (float):           Time when the module finished.
-        waiting_time (float):       Time spent waiting for the mutex to unlock.
-        processing_time (float):    Time spent processing the data package.
-        total_time (float):         Total time spent processing the data package.
-        success (bool):             Indicates if the process was successful.
-        error (Exception or Error): Contains the error. Can be set as type Exception or Error and will be converted to Error.
+        module_id (str):                        ID of the module.
+        running (bool):                         Indicates if the module is running.
+        start_time (float):                     Time when the module was started.
+        end_time (float):                       Time when the module finished.
+        waiting_time (float):                   Time spent waiting for the mutex to unlock.
+        processing_time (float):                Time spent processing the data package.
+        total_time (float):                     Total time spent processing the data package.
+        sub_modules (List[DataPackageModule]):  List of sub-modules that have processed the data package. Including measurements.
+        message (str):                          Info message.
+        success (bool):                         Indicates if the process was successful.
+        error (Exception or Error):             Contains the error. Can be set as type Exception or Error and will be converted to Error.
     """
-    module_id: str
-    start_time: float
-    end_time: float
-    waiting_time: float
-    processing_time: float
-    total_time: float
-    success: bool
+    module_id: str = field(default_factory=lambda: "Module-" + str(uuid.uuid4()))
+    running: bool = False
+    start_time: float = 0.0
+    end_time: float = 0.0
+    waiting_time: float = 0.0
+    processing_time: float = 0.0
+    total_time: float = 0.0
+    sub_modules: List['DataPackageModule'] = field(default_factory=list)
+    message: str = ""
+    success: bool = True
     error: Union[Exception, Error, None] = None
 
+    def set_from_grpc(self, grpc_module):
+        self.module_id = grpc_module.module_id
+        self.running = grpc_module.running
+        self.start_time = grpc_module.start_time
+        self.end_time = grpc_module.end_time
+        self.waiting_time = grpc_module.waiting_time
+        self.processing_time = grpc_module.processing_time
+        self.total_time = grpc_module.total_time
 
+        existing_sub_modules = {sub_module.module_id: sub_module for sub_module in self.sub_modules}
+        for module in grpc_module.sub_modules:
+            if module:
+                if module.module_id in existing_sub_modules:
+                    existing_sub_modules[module.module_id].set_from_grpc(module)
+                else:
+                    new_sub_module = DataPackageModule()
+                    new_sub_module.set_from_grpc(module)
+                    self.sub_modules.append(new_sub_module)
+
+        self.message = grpc_module.message
+        self.success = grpc_module.success
+        if grpc_module.error and grpc_module.error.ListFields():
+            if self.error is None:
+                self.error = Error()
+            self.error.set_from_grpc(grpc_module.error)
+        else:
+            self.error = None
+
+    def to_grpc(self):
+        grpc_module = data_pb2.DataPackageModule()
+        grpc_module.module_id = self.module_id
+        grpc_module.running = self.running
+        grpc_module.start_time = self.start_time
+        grpc_module.end_time = self.end_time
+        grpc_module.waiting_time = self.waiting_time
+        grpc_module.processing_time = self.processing_time
+        grpc_module.total_time = self.total_time
+        grpc_module.sub_modules.extend([module.to_grpc() for module in self.sub_modules])
+        grpc_module.message = self.message
+        grpc_module.success = self.success
+        if isinstance(self.error, Exception):
+            self.error = exception_to_error(self.error)
+        if self.error:
+            grpc_module.error.CopyFrom(self.error.to_grpc())
+        else:
+            grpc_module.error.Clear()
+        return grpc_module
 
 @dataclass
-class DataPackage:
+class DataPackage (ThreadSafeClass):
     """
     Class which contains the data and metadata for a pipeline process and will be passed through the pipeline and between modules.
     Attributes:
@@ -46,183 +99,69 @@ class DataPackage:
         modules (List[DataPackageModule]):      List of modules that have processed the data package. Including measurements.
         data (Any):                             The actual data contained in the package.
         success (bool):                         Indicates if the process was successful. If not successful, the error attribute should be set.
-        message (str):                          Info message.
-        error (Error):                          Error message if the process was not successful.
+        errors (Error):                         List of errors that occurred during the processing of the data package.
     """
     id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
-    pipeline_id: str
-    pipeline_executer_id: str
-    sequence_number: int
-    modules: List[DataPackageModule] = field(default_factory=list)  # Replace Any with DataPackageModule if defined
+    pipeline_id: str = ""
+    pipeline_executer_id: str = ""
+    sequence_number: int = -1
+    modules: List[DataPackageModule] = field(default_factory=list)
     data: Any = None
     running: bool = False
     success: bool = True
-    message: str = ""
-    error: Optional[Union[Error, Exception, None]] = None
+    errors: List[Union[Error, Exception, None]] = field(default_factory=list)
 
     # Immutable attributes
     _immutable_attributes: List[str] = field(default_factory=lambda: 
-                                            [
-                                                'id',
-                                                'pipeline_id',
-                                                'pipeline_executer_id',
-                                            ]
-                                        )
-
-    # Mutexes for thread-safe property access
-    _mutexes: Dict[str, threading.Lock] = field(default_factory=dict, init=False)
-
-    _mutex: threading.Lock = threading.Lock() # For locking all properties starts with _
-
-    def __getattribute__(self, name: str) -> Any:
-        if name == '_mutex':
-            return super().__getattribute__(name)
-
-        if name.startswith('_'): 
-            with self._mutex:
-                return super().__getattribute__(name)
-        attr = super().__getattribute__(name)
-        if isinstance(attr, types.MethodType):
-            return attr
-
-        if '_mutexes' in self.__dict__:
-            if name not in self._mutexes:
-                self._mutexes[name] = threading.Lock()
-
-            with self._mutexes[name]:
-                return super().__getattribute__(name)
-        else:
-            return super().__getattribute__(name)
-
-    def __setattr__(self, name: str, value: Any):
-        if name.startswith('_'):
-            with self._mutex:
-                super().__setattr__(name, value)
-                return
-        
-        if '_immutable_attributes' in self.__dict__:
-            for attr in self._immutable_attributes:
-                if name == attr and attr in self.__dict__:
-                    raise AttributeError(f"'{self.__class__.__name__}' object attribute '{attr}' is immutable")
-
-        if '_mutexes' in self.__dict__:
-            if name not in self._mutexes:
-                self._mutexes[name] = threading.Lock()
-            with self._mutexes[name]:
-                current_thread = threading.current_thread()
-                if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
-                    raise RuntimeError("Modification not allowed: the thread handling this DataPackage has timed out.")
-                super().__setattr__(name, value)
-        else:
-            super().__setattr__(name, value)
-
-    def __deepcopy__(self, memo):
-        # Create a deep copy of the object without the _mutexes
-        cls = self.__class__
-        result = cls.__new__(cls)
-        memo[id(self)] = result
-
-        for k, v in self.__dict__.items():
-            if k != '_mutexes':
-                setattr(result, k, copy.deepcopy(v, memo))
-
-        # Reinitialize the _mutexes after copying
-        result._mutexes = {k: threading.Lock() for k in self.__dict__.keys() if k != '_mutexes'}
-
-        return result
-
-    def copy(self):
-        # Create a deep copy using the custom __deepcopy__ method
-        return copy.deepcopy(self)
-
-    def __str__(self):
-        data_dict = {key: value for key, value in self.__dict__.items() if not key.startswith('_')}
-        data_dict['error'] = json_error_handler_dict(self.error) if self.error else None
-        data_dict['modules'] = [
-            {**asdict(module), 'error': json_error_handler_dict(module.error) if module.error else None} 
-            for module in data_dict['modules']
-        ]
-
-        # Handle non-serializable data
-        try:
-            jsonstring = json.dumps(data_dict, default=str, indent=4)
-        except (TypeError, ValueError):
-            data_dict['data'] = "Data which cannot be displayed as JSON"
-            jsonstring = json.dumps(data_dict, default=str, indent=4)
-
-        return jsonstring
-
-
-
-# Example usage code
-def worker(data_package):
-    try:
-        # Simulate work
-        time.sleep(5)
-        # Modify the data package
-        data_package.data = {"updated_key": "updated_value"}
-        print("DataPackage modified by worker thread.")
-    except RuntimeError as e:
-        print(e)
-
-def main():
-    data_package = DataPackage(
-        pipeline_id="pipeline_1",
-        pipeline_executer_id="executor_1",
-        sequence_number=1,
-        data=b'\x00\x01'  # Non-serializable data (bytes)
-    )
-
-    print(data_package)
+                                                [
+                                                    'id',
+                                                    'pipeline_id',
+                                                    'pipeline_executer_id',
+                                                ]
+                                            )
     
-    # Create an instance of DataPackage
-    package = DataPackage(
-        pipeline_id="pipeline_1",
-        pipeline_executer_id="executor_1",
-        sequence_number=1,
-        data={"key": "value"},
-        success=True,
-        error="No error"
-    )
+    def set_from_grpc(self, grpc_package):
+        temp_immutable_attributes = self._immutable_attributes
+        self._immutable_attributes = []
 
-    # Start the worker thread
-    worker_thread = threading.Thread(target=worker, args=(package,))
-    worker_thread.timed_out = False
-    worker_thread.start()
-    worker_thread.join(timeout=1)  # Set timeout for the worker thread
+        self.pipeline_id = grpc_package.pipeline_id
+        self.pipeline_executer_id = grpc_package.pipeline_executer_id
+        self.sequence_number = grpc_package.sequence_number
 
-    # Check if the worker thread is still alive
-    if worker_thread.is_alive():
-        print("Worker thread timed out.")
-        worker_thread.timed_out = True
+        existing_modules = {module.module_id: module for module in self.modules}
+        for module in grpc_package.modules:
+            if module:
+                if module.module_id in existing_modules:
+                    existing_modules[module.module_id].set_from_grpc(module)
+                else:
+                    new_module = DataPackageModule()
+                    new_module.set_from_grpc(module)
+                    self.modules.append(new_module)
 
-    # Access properties
-    print(f"ID: {package.id}")
-    print(f"Pipeline Executor ID: {package.pipeline_executer_id}")
-    print(f"Sequence Number: {package.sequence_number}")
-    print(f"Data: {package.data}")
-    print(f"Success: {package.success}")
-    print(f"Error: {package.error}")
+        self.data = pickle.loads(grpc_package.data)
+        self.running = grpc_package.running
+        self.success = grpc_package.success
 
-    # Attempt to modify the package after timeout
-    try:
-        package.sequence_number = 2
-    except RuntimeError as e:
-        print(f"Error in main thread: {e}")
+        existing_errors = {error.id: error for error in self.errors}
+        for error in grpc_package.errors:
+            if error:
+                if error.id in existing_errors:
+                    existing_errors[error.id].set_from_grpc(error)
+                else:
+                    new_error = Error()
+                    new_error.set_from_grpc(error)
+                    self.errors.append(new_error)
 
+        self._immutable_attributes = temp_immutable_attributes
 
-    dpm = DataPackageModule(
-        module_id="module_1",
-        start_time=0.0,
-        end_time=5.0,
-        waiting_time=0.0,
-        processing_time=5.0,
-        total_time=5.0,
-        success=True,
-        error=ValueError("An example error")
-    )
-
-    print(dpm.error)
-
-if __name__ == "__main__":
-    main()
+    def to_grpc(self):
+        grpc_package = data_pb2.DataPackage()
+        grpc_package.pipeline_id = self.pipeline_id
+        grpc_package.pipeline_executer_id = self.pipeline_executer_id
+        grpc_package.sequence_number = self.sequence_number
+        grpc_package.modules.extend([module.to_grpc() for module in self.modules])
+        grpc_package.data = pickle.dumps(self.data)
+        grpc_package.running = self.running
+        grpc_package.success = self.success
+        grpc_package.errors.extend([error.to_grpc() for error in self.errors])
+        return grpc_package

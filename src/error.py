@@ -5,26 +5,103 @@ import threading
 import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Dict, List, NamedTuple, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Union
+import uuid
+
+from . import data_pb2
+from .thread_safe_class import ThreadSafeClass
+
+
+class RemoteException(Exception):
+    def __init__(self, error: 'Error'):
+        self.id = error.id
+        self.type = error.type
+        self.message = error.message
+        self.traceback = error.traceback
+        self.thread = error.thread
+        self.start_context = error.start_context
+        self.thread_id = error.thread_id
+        self.is_daemon = error.is_daemon
+        self.local_vars = error.local_vars
+        self.global_vars = error.global_vars
+        self.environment_vars = error.environment_vars
+        self.module_versions = error.module_versions
+        super().__init__(self.message)
+
+    def to_error(self) -> 'Error':
+        return Error(
+            id=self.id,
+            type=self.type,
+            message=self.message,
+            traceback=self.traceback,
+            thread=self.thread,
+            start_context=self.start_context,
+            thread_id=self.thread_id,
+            is_daemon=self.is_daemon,
+            local_vars=self.local_vars,
+            global_vars=self.global_vars,
+            environment_vars=self.environment_vars,
+            module_versions=self.module_versions
+        )
+
 
 @dataclass
-class Error:
-    type: str
-    message: str
-    traceback: List[str]
-    thread: Optional[str] = None
-    start_context: Optional[str] = None
-    thread_id: Optional[int] = None
-    is_daemon: Optional[bool] = None
-    local_vars: Optional[Dict[str, str]] = field(default_factory=dict)
-    global_vars: Optional[Dict[str, str]] = field(default_factory=dict)
-    environment_vars: Optional[Dict[str, str]] = field(default_factory=dict)
-    module_versions: Optional[Dict[str, str]] = field(default_factory=dict)
+class Error (ThreadSafeClass, Exception):
+    id: str = field(default_factory=lambda: "Error-" + str(uuid.uuid4()))
+    type: str = ""
+    message: str = ""
+    traceback: List[str] = field(default_factory=list)
+    thread: Union[str, None] = None
+    start_context: Union[str, None] = None
+    thread_id: Union[int, None] = None
+    is_daemon: Union[bool, None] = None
+    local_vars: Dict[str, str] = field(default_factory=dict)
+    global_vars: Dict[str, str] = field(default_factory=dict)
+    environment_vars: Dict[str, str] = field(default_factory=dict)
+    module_versions: Dict[str, str] = field(default_factory=dict)
 
     def __str__(self) -> str:
         return json_error_handler_str(self)
+    
+    def to_remote_exception(self) -> RemoteException:
+        return RemoteException(self)
+
+    def set_from_grpc(self, grpc_error):
+        self.id = grpc_error.id
+        self.type = grpc_error.type
+        self.message = grpc_error.message
+        self.traceback = list(grpc_error.traceback)  # Convert repeated fields to list
+        self.thread = grpc_error.thread  # Directly set the field
+        self.start_context = grpc_error.start_context  # Directly set the field
+        self.thread_id = grpc_error.thread_id  # Directly set the field
+        self.is_daemon = grpc_error.is_daemon  # Directly set the field
+        self.local_vars = dict(grpc_error.local_vars)  # Convert map fields to dict
+        self.global_vars = dict(grpc_error.global_vars)  # Convert map fields to dict
+        self.environment_vars = dict(grpc_error.environment_vars)  # Convert map fields to dict
+        self.module_versions = dict(grpc_error.module_versions)  # Convert map fields to dict
+
+    def to_grpc(self):
+        grpc_error = data_pb2.Error()
+        grpc_error.id = self.id
+        grpc_error.type = self.type
+        grpc_error.message = self.message
+        grpc_error.traceback.extend(self.traceback)
+        if self.thread is not None:
+            grpc_error.thread = self.thread
+        if self.start_context is not None:
+            grpc_error.start_context = self.start_context
+        if self.thread_id is not None:
+            grpc_error.thread_id = self.thread_id
+        if self.is_daemon is not None:
+            grpc_error.is_daemon = self.is_daemon
+        grpc_error.local_vars.update(self.local_vars)
+        grpc_error.global_vars.update(self.global_vars)
+        grpc_error.environment_vars.update(self.environment_vars)
+        grpc_error.module_versions.update(self.module_versions)
+        return grpc_error
 
 class ErrorLoggerOptions(NamedTuple):
+    id: bool = True
     exc_type: bool = True
     message: bool = True
     traceback: bool = True
@@ -77,6 +154,8 @@ def exception_to_error(exc: Union[BaseException, Error, None]) -> Union[Error, N
         return None
     if isinstance(exc, Error):
         return exc
+    if isinstance(exc, RemoteException):
+        return exc.to_error()
     exc_type = type(exc)
     exc_value = exc
     exc_traceback = exc.__traceback__
@@ -143,6 +222,8 @@ def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Union[Dic
     }
 
     if error_logger.get_debug():
+        if options.id:
+            minimal_error_info["id"] = error_obj.id
         if options.exc_type:
             minimal_error_info["type"] = error_obj.type
         if options.message:
@@ -197,6 +278,7 @@ if __name__ == "__main__":
 
     # Set custom options
     custom_options = ErrorLoggerOptions(
+        id = True,
         exc_type = True,
         message = True,
         traceback = True,

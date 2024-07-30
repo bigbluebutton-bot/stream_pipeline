@@ -1,7 +1,9 @@
 # main.py
 import random
 import threading
-from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage
+from typing import Union
+from src.data_package import DataPackageModule
+from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
 from src.pipeline import Pipeline, PipelineMode
 from prometheus_client import start_http_server
 import concurrent.futures
@@ -17,13 +19,13 @@ start_http_server(8000)
 
 # Example custom modules
 class DataValidationModule(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         if isinstance(data.data, dict) and "key" in data.data:
             data.success = True
-            data.message = "Validation succeeded"
+            dpm.message = "Validation succeeded"
         else:
             data.success = False
-            data.message = "Validation failed: key missing"
+            dpm.message = "Validation failed: key missing"
 
 class DataTransformationModule(ExecutionModule):
     def __init__(self):
@@ -32,44 +34,47 @@ class DataTransformationModule(ExecutionModule):
             timeout=4.0
         ))
 
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         list1 = [1, 2, 3, 4, 5, 6]
         randomint = random.choice(list1)
         time.sleep(randomint)
         if "key" in data.data:
             data.data["key"] = data.data["key"].upper()
             data.success = True
-            data.message = "Transformation succeeded"
+            dpm.message = "Transformation succeeded"
         else:
             data.success = False
-            data.message = "Transformation failed: key missing"
+            dpm.message = "Transformation failed: key missing"
 
 class DataConditionModule(ConditionModule):
     def condition(self, data: DataPackage) -> bool:
         return "condition" in data.data and data.data["condition"] == True
 
 class SuccessModule(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.data["status"] = "success"
         data.success = True
-        data.message = "Condition true: success"
+        dpm.message = "Condition true: success"
 
 class FailureModule(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.data["status"] = "failure"
         data.success = True
-        data.message = "Condition false: failure"
+        dpm.message = "Condition false: failure"
 
 class AlwaysTrue(ExecutionModule):
-    def execute(self, data: DataPackage) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.success = True
-        data.message = "Always true"
+        dpm.message = "Always true"
 
 # Setting up the processing pipeline
-pre_modules: list[Module] = [DataValidationModule()]
+pre_modules: list[Module] = [
+    ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+    DataValidationModule()
+    ]
 main_modules: list[Module] = [
-    DataTransformationModule(),
     DataConditionModule(SuccessModule(), FailureModule()),
+    DataTransformationModule(),
 ]
 post_modules: list[Module] = [
     CombinationModule([
@@ -86,13 +91,13 @@ counter = 0
 counter_mutex = threading.Lock()
 def callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(f"OK: {processed_data.message}")
+    print(f"OK: {processed_data.data}")
     with counter_mutex:
         counter = counter + 1
 
 def error_callback(processed_data: DataPackage):
     global counter, counter_mutex
-    print(f"ERROR: {processed_data}, data: {processed_data.data}: {processed_data.error}")
+    print(f"ERROR: {processed_data}")
     with counter_mutex:
         counter = counter + 1
 
