@@ -19,7 +19,7 @@ start_http_server(8000)
 
 # Example custom modules
 class DataValidationModule(ExecutionModule):
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         if isinstance(data.data, dict) and "key" in data.data:
             data.success = True
             data.message = "Validation succeeded"
@@ -34,7 +34,7 @@ class DataTransformationModule(ExecutionModule):
             timeout=4.0
         ))
 
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         list1 = [1, 2, 3, 4, 5, 6]
         randomint = random.choice(list1)
         time.sleep(randomint)
@@ -51,25 +51,25 @@ class DataConditionModule(ConditionModule):
         return "condition" in data.data and data.data["condition"] == True
 
 class SuccessModule(ExecutionModule):
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.data["status"] = "success"
         data.success = True
         data.message = "Condition true: success"
 
 class FailureModule(ExecutionModule):
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.data["status"] = "failure"
         data.success = True
         data.message = "Condition false: failure"
 
 class AlwaysTrue(ExecutionModule):
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         data.success = True
         data.message = "Always true"
 
 # Setting up the processing pipeline
 pre_modules: list[Module] = [
-    ExternalModule("localhost", 50051),
+    ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
     DataValidationModule()
     ]
 main_modules: list[Module] = [
@@ -85,7 +85,7 @@ post_modules: list[Module] = [
 ]
 
 
-manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 10, PipelineMode.ORDER_BY_SEQUENCE)
+manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 1, PipelineMode.ORDER_BY_SEQUENCE)
 
 counter = 0
 counter_mutex = threading.Lock()

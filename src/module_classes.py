@@ -157,7 +157,7 @@ class Module(ABC):
             dpm.error = e
 
     @abstractmethod
-    def execute(self, data: DataPackage, data_package_module: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, data_package_module: DataPackageModule) -> None:
         """
         Abstract method to be implemented by subclasses.
         Performs an operation on the data package.
@@ -172,7 +172,7 @@ class ExecutionModule(Module, ABC):
     Abstract class for modules that perform specific execution tasks.
     """
     @abstractmethod
-    def execute(self, data: DataPackage, data_package_module: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, data_package_module: DataPackageModule) -> None:
         """
         Method to be implemented by subclasses for specific execution logic.
         """
@@ -196,7 +196,7 @@ class ConditionModule(Module, ABC):
         return True
 
     @final
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         """
         Executes the true_module if condition is met, otherwise executes the false_module.
         """
@@ -215,7 +215,7 @@ class CombinationModule(Module):
         self.modules = modules
     
     @final
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         """
         Executes each module in the list sequentially, passing the output of one as the input to the next.
         """
@@ -235,19 +235,25 @@ class ExternalModule(Module):
         self.port: int = port
 
     @final
-    def execute(self, data: DataPackage, dpm: Union[DataPackageModule, None] = None) -> None:
+    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
         address = f"{self.host}:{self.port}"
         with grpc.insecure_channel(address) as channel:
             stub = data_pb2_grpc.ModuleServiceStub(channel)
             dp_grpc = data.to_grpc()
-            dpm_grpc = dpm.to_grpc() if dpm else None
+            dpm_grpc = dpm.to_grpc()
             data_grpc = data_pb2.RequestDPandDPM(data_package=dp_grpc, data_package_module=dpm_grpc) # type: ignore
             response = stub.run(data_grpc)
 
-            if response.error:
-                er = Error()
-                er.set_from_grpc(response.error)
-                exc = er.to_remote_exception()
-                raise exc
+            # Debugging output
+            # print(f"Type of response.error: {type(response.error)}")
+            # print(f"repr of response.error: {repr(response.error)}")
+            # print(f"Fields of response.error: {response.error.ListFields()}")
 
-            data.set_from_grpc(response.data_package)
+            if response.error and response.error.ListFields():
+                print(f"Error: {response.error}")
+                error = Error()
+                error.set_from_grpc(response.error)
+                raise error.to_exception()
+            else:
+                data.set_from_grpc(response.data_package)
+                print(f"dpm: {dpm}")
