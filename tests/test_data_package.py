@@ -198,6 +198,7 @@ class TestDataPackageModuleConversion(unittest.TestCase):
         self.assertEqual(len(new_module.sub_modules), len(self.module.sub_modules))
         for new_sub, old_sub in zip(new_module.sub_modules, self.module.sub_modules):
             self.assertEqual(new_sub.module_id, old_sub.module_id)
+        self.assertEqual(new_module.error, self.module.error)
 
 class TestDataPackageConversion(unittest.TestCase):
 
