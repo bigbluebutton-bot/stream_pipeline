@@ -6,7 +6,7 @@ import uuid
 from . import data_pb2
 
 from .thread_safe_class import ThreadSafeClass
-from .error import Error
+from .error import Error, exception_to_error
 
 
 
@@ -60,7 +60,7 @@ class DataPackageModule(ThreadSafeClass):
 
         self.message = grpc_module.message
         self.success = grpc_module.success
-        if grpc_module.HasField('error'):
+        if grpc_module.error and grpc_module.error.ListFields():
             if self.error is None:
                 self.error = Error()
             self.error.set_from_grpc(grpc_module.error)
@@ -79,8 +79,12 @@ class DataPackageModule(ThreadSafeClass):
         grpc_module.sub_modules.extend([module.to_grpc() for module in self.sub_modules])
         grpc_module.message = self.message
         grpc_module.success = self.success
-        if isinstance(self.error, Error):
+        if isinstance(self.error, Exception):
+            self.error = exception_to_error(self.error)
+        if self.error:
             grpc_module.error.CopyFrom(self.error.to_grpc())
+        else:
+            grpc_module.error.Clear()
         return grpc_module
 
 @dataclass
@@ -138,12 +142,15 @@ class DataPackage (ThreadSafeClass):
         self.running = grpc_package.running
         self.success = grpc_package.success
 
-        self.errors = []
+        existing_errors = {error.id: error for error in self.errors}
         for error in grpc_package.errors:
             if error:
-                er = Error()
-                er.set_from_grpc(error)
-                self.errors.append(er)
+                if error.id in existing_errors:
+                    existing_errors[error.id].set_from_grpc(error)
+                else:
+                    new_error = Error()
+                    new_error.set_from_grpc(error)
+                    self.errors.append(new_error)
 
         self._immutable_attributes = temp_immutable_attributes
 
@@ -156,5 +163,5 @@ class DataPackage (ThreadSafeClass):
         grpc_package.data = pickle.dumps(self.data)
         grpc_package.running = self.running
         grpc_package.success = self.success
-        grpc_package.errors.extend([error.to_grpc() for error in self.errors if isinstance(error, Error)])
+        grpc_package.errors.extend([error.to_grpc() for error in self.errors])
         return grpc_package

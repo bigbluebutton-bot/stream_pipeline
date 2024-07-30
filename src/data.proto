@@ -4,17 +4,18 @@ package data;
 
 // Error message definition
 message Error {
-    string type = 1;
-    string message = 2;
-    repeated string traceback = 3;
-    string thread = 4;
-    string start_context = 5;
-    int64 thread_id = 6;
-    bool is_daemon = 7;
-    map<string, string> local_vars = 8;
-    map<string, string> global_vars = 9;
-    map<string, string> environment_vars = 10;
-    map<string, string> module_versions = 11;
+    string id = 1;
+    string type = 2;
+    string message = 3;
+    repeated string traceback = 4;
+    string thread = 5;
+    string start_context = 6;
+    int64 thread_id = 7;
+    bool is_daemon = 8;
+    map<string, string> local_vars = 9;
+    map<string, string> global_vars = 10;
+    map<string, string> environment_vars = 11;
+    map<string, string> module_versions = 12;
 }
 
 // DataPackageModule message definition

@@ -6,6 +6,7 @@ import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any, Dict, List, NamedTuple, Union
+import uuid
 
 from . import data_pb2
 from .thread_safe_class import ThreadSafeClass
@@ -13,6 +14,7 @@ from .thread_safe_class import ThreadSafeClass
 
 class RemoteException(Exception):
     def __init__(self, error: 'Error'):
+        self.id = error.id
         self.type = error.type
         self.message = error.message
         self.traceback = error.traceback
@@ -28,6 +30,7 @@ class RemoteException(Exception):
 
     def to_error(self) -> 'Error':
         return Error(
+            id=self.id,
             type=self.type,
             message=self.message,
             traceback=self.traceback,
@@ -44,6 +47,7 @@ class RemoteException(Exception):
 
 @dataclass
 class Error (ThreadSafeClass, Exception):
+    id: str = field(default_factory=lambda: "Error-" + str(uuid.uuid4()))
     type: str = ""
     message: str = ""
     traceback: List[str] = field(default_factory=list)
@@ -63,6 +67,7 @@ class Error (ThreadSafeClass, Exception):
         return RemoteException(self)
 
     def set_from_grpc(self, grpc_error):
+        self.id = grpc_error.id
         self.type = grpc_error.type
         self.message = grpc_error.message
         self.traceback = list(grpc_error.traceback)  # Convert repeated fields to list
@@ -77,6 +82,7 @@ class Error (ThreadSafeClass, Exception):
 
     def to_grpc(self):
         grpc_error = data_pb2.Error()
+        grpc_error.id = self.id
         grpc_error.type = self.type
         grpc_error.message = self.message
         grpc_error.traceback.extend(self.traceback)
@@ -95,6 +101,7 @@ class Error (ThreadSafeClass, Exception):
         return grpc_error
 
 class ErrorLoggerOptions(NamedTuple):
+    id: bool = True
     exc_type: bool = True
     message: bool = True
     traceback: bool = True
@@ -215,6 +222,8 @@ def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Union[Dic
     }
 
     if error_logger.get_debug():
+        if options.id:
+            minimal_error_info["id"] = error_obj.id
         if options.exc_type:
             minimal_error_info["type"] = error_obj.type
         if options.message:
@@ -269,6 +278,7 @@ if __name__ == "__main__":
 
     # Set custom options
     custom_options = ErrorLoggerOptions(
+        id = True,
         exc_type = True,
         message = True,
         traceback = True,
