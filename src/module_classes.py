@@ -14,14 +14,14 @@ from .error import Error, exception_to_error
 from .data_package import DataPackage, DataPackageModule
 
 # Metrics to track time spent on processing modules
-REQUEST_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
-REQUEST_PROCESSING_TIME_WITHOUT_ERROR = Summary('module_processing_seconds_without_error', 'Time spent processing module without error', ['module_name'])
-REQUEST_PROCESSING_COUNTER = Gauge('module_processing_counter', 'Number of processes executing the module at the moment', ['module_name'])
-REQUEST_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['module_name'])
-REQUEST_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
-REQUEST_TOTAL_TIME_WITHOUT_ERROR = Summary('module_total_seconds_without_error', 'Total time spent processing module without error', ['module_name'])
-REQUEST_WAITING_COUNTER = Gauge('module_waiting_counter', 'Number of processes waiting to execute the task (mutex)', ['module_name'])
-REQUEST_ERROR_COUNTER = Gauge('module_error_counter', 'Number of errors encountered by the module', ['module_name'])
+MODULE_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
+MODULE_PROCESSING_TIME_WITHOUT_ERROR = Summary('module_processing_seconds_without_error', 'Time spent processing module without error', ['module_name'])
+MODULE_PROCESSING_COUNTER = Gauge('module_processing_counter', 'Number of processes executing the module at the moment', ['module_name'])
+MODULE_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['module_name'])
+MODULE_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
+MODULE_TOTAL_TIME_WITHOUT_ERROR = Summary('module_total_seconds_without_error', 'Total time spent processing module without error', ['module_name'])
+MODULE_WAITING_COUNTER = Gauge('module_waiting_counter', 'Number of processes waiting to execute the task (mutex)', ['module_name'])
+MODULE_ERROR_COUNTER = Gauge('module_error_counter', 'Number of errors encountered by the module', ['module_name'])
 
 class ModuleOptions(NamedTuple):
     """
@@ -86,12 +86,12 @@ class Module(ABC):
         start_total_time = time.time()
         waiting_time = 0.0
         if self._use_mutex:
-            REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).inc()
+            MODULE_WAITING_COUNTER.labels(module_name=self.__class__.__name__).inc()
             self._mutex.acquire()
             waiting_time = time.time() - start_total_time
             dpm.waiting_time = waiting_time
-            REQUEST_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(waiting_time)
-            REQUEST_WAITING_COUNTER.labels(module_name=self.__class__.__name__).dec()
+            MODULE_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(waiting_time)
+            MODULE_WAITING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
         start_time = time.time()
         dpm.start_time = start_total_time
@@ -100,11 +100,11 @@ class Module(ABC):
         execute_thread = threading.Thread(target=self._execute_with_result, args=(data_package, dpm))
         execute_thread.start_context = threading.current_thread().name # type: ignore
         execute_thread.timed_out = False # type: ignore
-        REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).inc()
+        MODULE_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).inc()
         execute_thread.start()
         execute_thread.join(self._timeout)
         execute_thread.timed_out = True # type: ignore
-        REQUEST_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).dec()
+        MODULE_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
         thread_alive = execute_thread.is_alive()
         if thread_alive:
@@ -119,7 +119,7 @@ class Module(ABC):
         if not dpm.success:
             data_package.success = False
             data_package.errors.append(dpm.error)
-            REQUEST_ERROR_COUNTER.labels(module_name=self.__class__.__name__).inc()
+            MODULE_ERROR_COUNTER.labels(module_name=self.__class__.__name__).inc()
         
         end_time = time.time()
         dpm.end_time = end_time
@@ -131,11 +131,11 @@ class Module(ABC):
 
 
         if data_package.success:
-            REQUEST_PROCESSING_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(processing_time)
-            REQUEST_TOTAL_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(total_time)
+            MODULE_PROCESSING_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(processing_time)
+            MODULE_TOTAL_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(total_time)
         
-        REQUEST_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(processing_time)
-        REQUEST_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(total_time)
+        MODULE_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(processing_time)
+        MODULE_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(total_time)
         
         if self._use_mutex:
             self._mutex.release()
