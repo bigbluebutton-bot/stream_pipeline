@@ -1,0 +1,11 @@
+  version: '3.8'
+
+  services:
+    prometheus:
+      image: prom/prometheus:latest
+      container_name: prometheus
+      user: "${UID}:${GID}"
+      volumes:
+        - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      ports:
+        - "1000:9090"
