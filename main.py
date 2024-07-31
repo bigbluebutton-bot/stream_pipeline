@@ -4,7 +4,7 @@ import threading
 from typing import Union
 from src.data_package import DataPackageModule
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
-from src.pipeline import Pipeline, PipelineMode
+from src.pipeline import Pipeline, ParallelExecutionMode, PipelinePhase
 from prometheus_client import start_http_server
 import concurrent.futures
 import time
@@ -68,24 +68,28 @@ class AlwaysTrue(ExecutionModule):
         dpm.message = "Always true"
 
 # Setting up the processing pipeline
-pre_modules: list[Module] = [
+pre_phase = PipelinePhase([
     ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
     DataValidationModule()
-    ]
-main_modules: list[Module] = [
+    ])
+main_phase = PipelinePhase([
     DataConditionModule(SuccessModule(), FailureModule()),
     DataTransformationModule(),
-]
-post_modules: list[Module] = [
+])
+post_phase = PipelinePhase([
     CombinationModule([
         CombinationModule([
             AlwaysTrue(),
         ]),
     ])
-]
+])
+
+phases = [pre_phase, main_phase, post_phase]
 
 
-manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 10, PipelineMode.ORDER_BY_SEQUENCE)
+
+pipeline = Pipeline(phases, "test-pipeline")
+pip_ex_id = pipeline.register_executor()
 
 counter = 0
 counter_mutex = threading.Lock()
@@ -103,7 +107,7 @@ def error_callback(processed_data: DataPackage):
 
 # Function to execute the processing pipeline
 def process_data(data):
-    manager.run(data, callback, error_callback)
+    pipeline.execute(data, pip_ex_id, callback, error_callback)
 
 # Example data
 data_list = [
@@ -131,3 +135,8 @@ while True:
     time.sleep(1)
     if counter >= len(data_list):
         break
+
+pipeline.unregister_executor(pip_ex_id)
+
+print("THE END")
+time.sleep(50000)

@@ -88,7 +88,53 @@ class DataPackageModule(ThreadSafeClass):
         return grpc_module
 
 @dataclass
-class DataPackage (ThreadSafeClass):
+class DataPackagePhase(ThreadSafeClass):
+    """
+    Class which contains metadata for a phase that has processed a data package.
+    Attributes:
+        phase_id (str):                         ID of the phase.
+        running (bool):                         Indicates if the phase is running.
+        start_time (float):                     Time when the phase was started.
+        end_time (float):                       Time when the phase finished.
+        processing_time (float):                Time spent processing the data package.
+        modules (List[DataPackageModule]):      List of modules that have processed the data package. Including measurements.
+    """
+    phase_id: str = field(default_factory=lambda: "Phase-" + str(uuid.uuid4()))
+    running: bool = False
+    start_time: float = 0.0
+    end_time: float = 0.0
+    processing_time: float = 0.0
+    modules: List['DataPackageModule'] = field(default_factory=list)
+
+    def set_from_grpc(self, grpc_phase):
+        self.phase_id = grpc_phase.phase_id
+        self.running = grpc_phase.running
+        self.start_time = grpc_phase.start_time
+        self.end_time = grpc_phase.end_time
+        self.processing_time = grpc_phase.processing_time
+
+        existing_modules = {module.module_id: module for module in self.modules}
+        for module in grpc_phase.modules:
+            if module:
+                if module.module_id in existing_modules:
+                    existing_modules[module.module_id].set_from_grpc(module)
+                else:
+                    new_module = DataPackageModule()
+                    new_module.set_from_grpc(module)
+                    self.modules.append(new_module)
+
+    def to_grpc(self):
+        grpc_phase = data_pb2.DataPackagePhase()
+        grpc_phase.phase_id = self.phase_id
+        grpc_phase.running = self.running
+        grpc_phase.start_time = self.start_time
+        grpc_phase.end_time = self.end_time
+        grpc_phase.processing_time = self.processing_time
+        grpc_phase.modules.extend([module.to_grpc() for module in self.modules])
+        return grpc_phase
+
+@dataclass
+class DataPackage(ThreadSafeClass):
     """
     Class which contains the data and metadata for a pipeline process and will be passed through the pipeline and between modules.
     Attributes:
@@ -96,7 +142,7 @@ class DataPackage (ThreadSafeClass):
         pipeline_id (str):                      ID of the pipeline handling this package.
         pipeline_executer_id (str) immutable:   ID of the pipeline executor handling this package.
         sequence_number (int):                  The sequence number of the data package.
-        modules (List[DataPackageModule]):      List of modules that have processed the data package. Including measurements.
+        phases (List[DataPackagePhase]):        List of phases that have processed the data package. Including measurements.
         data (Any):                             The actual data contained in the package.
         success (bool):                         Indicates if the process was successful. If not successful, the error attribute should be set.
         errors (Error):                         List of errors that occurred during the processing of the data package.
@@ -105,7 +151,7 @@ class DataPackage (ThreadSafeClass):
     pipeline_id: str = ""
     pipeline_executer_id: str = ""
     sequence_number: int = -1
-    modules: List[DataPackageModule] = field(default_factory=list)
+    phases: List[DataPackagePhase] = field(default_factory=list)
     data: Any = None
     running: bool = False
     success: bool = True
@@ -116,7 +162,6 @@ class DataPackage (ThreadSafeClass):
                                                 [
                                                     'id',
                                                     'pipeline_id',
-                                                    'pipeline_executer_id',
                                                 ]
                                             )
     
@@ -128,15 +173,15 @@ class DataPackage (ThreadSafeClass):
         self.pipeline_executer_id = grpc_package.pipeline_executer_id
         self.sequence_number = grpc_package.sequence_number
 
-        existing_modules = {module.module_id: module for module in self.modules}
-        for module in grpc_package.modules:
-            if module:
-                if module.module_id in existing_modules:
-                    existing_modules[module.module_id].set_from_grpc(module)
+        existing_phases = {phase.phase_id: phase for phase in self.phases}
+        for phase in grpc_package.phases:
+            if phase:
+                if phase.phase_id in existing_phases:
+                    existing_phases[phase.phase_id].set_from_grpc(phase)
                 else:
-                    new_module = DataPackageModule()
-                    new_module.set_from_grpc(module)
-                    self.modules.append(new_module)
+                    new_phase = DataPackagePhase()
+                    new_phase.set_from_grpc(phase)
+                    self.phases.append(new_phase)
 
         self.data = pickle.loads(grpc_package.data)
         self.running = grpc_package.running
@@ -159,7 +204,7 @@ class DataPackage (ThreadSafeClass):
         grpc_package.pipeline_id = self.pipeline_id
         grpc_package.pipeline_executer_id = self.pipeline_executer_id
         grpc_package.sequence_number = self.sequence_number
-        grpc_package.modules.extend([module.to_grpc() for module in self.modules])
+        grpc_package.phases.extend([phase.to_grpc() for phase in self.phases])
         grpc_package.data = pickle.dumps(self.data)
         grpc_package.running = self.running
         grpc_package.success = self.success

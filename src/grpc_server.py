@@ -26,12 +26,13 @@ def grpc_to_normal(request_grpc: RequestDPandDPM) -> Tuple[DataPackage, Union[No
         return None
 
     def find_and_set_module(dp: DataPackage, dpm: DataPackageModule) -> DataPackageModule:
-        for module in dp.modules:
-            if module.module_id == dpm.module_id:
-                return module
-            found_module = find_module(module)
-            if found_module:
-                return found_module
+        for phase in dp.phases:
+            for module in phase.modules:
+                if module.module_id == dpm.module_id:
+                    return module
+                found_module = find_module(module)
+                if found_module:
+                    return found_module
         return dpm
 
     dpm = find_and_set_module(dp, dpm)

@@ -99,6 +99,9 @@ class Error (ThreadSafeClass, Exception):
         grpc_error.environment_vars.update(self.environment_vars)
         grpc_error.module_versions.update(self.module_versions)
         return grpc_error
+    
+    def to_exception(self) -> Exception:
+        return RemoteException(self)
 
 class ErrorLoggerOptions(NamedTuple):
     id: bool = True
