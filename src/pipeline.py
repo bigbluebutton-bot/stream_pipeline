@@ -2,6 +2,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 import threading
+import time
 from typing import Any, Callable, Dict, List, Tuple, Union
 import unittest
 from unittest.mock import MagicMock
@@ -11,9 +12,12 @@ from .data_package import DataPackage
 
 from .module_classes import Module
 
-
+PIPELINE_ERROR_COUNTER = Gauge('pipeline_error_counter', 'Number of errors in the pipeline', ['pipeline_name'])
 PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of processes executing the pipline at the moment', ['pipeline_name'])
-
+PIPELINE_PROCESSING_TIME = Summary('pipeline_processing_time', 'Time spent processing the pipeline', ['pipeline_name'])
+PIPELINE_PROCESSING_TIME_WITHOUT_ERROR = Summary('pipeline_processing_time_without_error', 'Time spent processing the pipeline without error', ['pipeline_name'])
+PIPELINE_WAITING_COUNTER = Gauge('pipeline_waiting_counter', 'Number of processes waiting for the pipline to be executed', ['pipeline_name'])
+PIPELINE_WAITING_TIME = Summary('pipeline_waiting_time', 'Time spent waiting for the pipeline to be executed', ['pipeline_name'])
 
 class PipelineProcessingPhase:
     """
@@ -287,6 +291,7 @@ class Pipeline:
             error_callback (Callable[[str, DataPackage], None]): The callback function to call in case of an error. (Default: None)
         """
         PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).inc()
+        start_time = time.time()
         
         callback_id = id(callback)
         with self._lock:
@@ -300,8 +305,13 @@ class Pipeline:
 
         start_context = threading.current_thread().name
 
+        waiting_time = 0.0
+
         def execute_pipeline() -> None:
             try:
+                PIPELINE_WAITING_COUNTER.labels(pipeline_name=self._name).dec()
+                PIPELINE_WAITING_TIME.labels(pipeline_name=self._name).observe(time.time() - waiting_time)
+
                 threading.current_thread().start_context = start_context # type: ignore
                 
                 with self._lock:
@@ -347,13 +357,21 @@ class Pipeline:
                 if error_callback:
                     error_callback(data_package)
                 
+            end_time = time.time()
+            total_time = end_time - start_time
             PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
+            if data_package.success:
+                PIPELINE_PROCESSING_TIME_WITHOUT_ERROR.labels(pipeline_name=self._name).observe(total_time)
+                PIPELINE_ERROR_COUNTER.labels(pipeline_name=self._name).inc()
+            PIPELINE_PROCESSING_TIME.labels(pipeline_name=self._name).observe(total_time)
 
         if self.executor is None:
             execute_pipeline()
             return
 
         eid = f"{executor.get_id()}-{data_package.sequence_number}"
+        PIPELINE_WAITING_COUNTER.labels(pipeline_name=self._name).inc()
+        waiting_time = time.time()
         future = self.executor.submit(execute_pipeline)
         if self._mode == PipelineMode.FIRST_WINS:
             self.active_futures[eid] = future
