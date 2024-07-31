@@ -21,6 +21,7 @@ REQUEST_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting bef
 REQUEST_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
 REQUEST_TOTAL_TIME_WITHOUT_ERROR = Summary('module_total_seconds_without_error', 'Total time spent processing module without error', ['module_name'])
 REQUEST_WAITING_COUNTER = Gauge('module_waiting_counter', 'Number of processes waiting to execute the task (mutex)', ['module_name'])
+REQUEST_ERROR_COUNTER = Gauge('module_error_counter', 'Number of errors encountered by the module', ['module_name'])
 
 class ModuleOptions(NamedTuple):
     """
@@ -118,6 +119,7 @@ class Module(ABC):
         if not dpm.success:
             data_package.success = False
             data_package.errors.append(dpm.error)
+            REQUEST_ERROR_COUNTER.labels(module_name=self.__class__.__name__).inc()
         
         end_time = time.time()
         dpm.end_time = end_time

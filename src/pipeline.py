@@ -12,7 +12,7 @@ from .data_package import DataPackage
 
 from .module_classes import Module
 
-
+PIPELINE_ERROR_COUNTER = Gauge('pipeline_error_counter', 'Number of errors in the pipeline', ['pipeline_name'])
 PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of processes executing the pipline at the moment', ['pipeline_name'])
 PIPELINE_PROCESSING_TIME = Summary('pipeline_processing_time', 'Time spent processing the pipeline', ['pipeline_name'])
 PIPELINE_PROCESSING_TIME_WITHOUT_ERROR = Summary('pipeline_processing_time_without_error', 'Time spent processing the pipeline without error', ['pipeline_name'])
@@ -362,6 +362,7 @@ class Pipeline:
             PIPELINE_PROCESSING_COUNTER.labels(pipeline_name=self._name).dec()
             if data_package.success:
                 PIPELINE_PROCESSING_TIME_WITHOUT_ERROR.labels(pipeline_name=self._name).observe(total_time)
+                PIPELINE_ERROR_COUNTER.labels(pipeline_name=self._name).inc()
             PIPELINE_PROCESSING_TIME.labels(pipeline_name=self._name).observe(total_time)
 
         if self.executor is None:
