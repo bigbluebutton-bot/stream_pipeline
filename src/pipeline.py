@@ -116,7 +116,7 @@ class ParallelPhaseExecution:
                 dp_phase.duration = end_time - start_time
                 data_package.phases[-1] = dp_phase
 
-class PipelineExecutor:
+class PipelineInstance:
     def __init__(self, name: str = "") -> None:
         self._id: str = f"PE-{uuid.uuid4()}"
         self._name: str = name if name else self._id
@@ -154,8 +154,8 @@ class Pipeline:
         self._id: str = f"P-{uuid.uuid4()}"
         self._name: str = name if name else self._id
         self._phases: List[PipelinePhase] = []
-        self._executors_phases: Dict[str, List[PipelinePhase]] = {} # Each executor has its own copy of the phases
-        self._pipeline_executors: Dict[str, PipelineExecutor] = {} # Dict of executors
+        self._instances_phases: Dict[str, List[PipelinePhase]] = {} # Each instance has its own copy of the phases
+        self._pipeline_instances: Dict[str, PipelineInstance] = {} # Dict of instances
 
         self._lock = threading.Lock()
 
@@ -179,44 +179,44 @@ class Pipeline:
                 for phase in phases:
                     self._phases.append(phase.__deepcopy__({}))
 
-        # for each executor create a deepcopy of the phases
+        # for each instance create a deepcopy of the phases
         with self._lock:
-            for ex_id in self._pipeline_executors:
+            for ex_id in self._pipeline_instances:
                 for phase in self._phases:
-                    self._executors_phases[ex_id].append(phase.__deepcopy__({}))
+                    self._instances_phases[ex_id].append(phase.__deepcopy__({}))
 
-    def register_executor(self) -> str:
-        ex = PipelineExecutor(name=f"")
+    def register_instance(self) -> str:
+        ex = PipelineInstance(name=f"")
         with self._lock:
-            self._pipeline_executors[ex.get_id()] = ex
-            self._executors_phases[ex.get_id()] = []
+            self._pipeline_instances[ex.get_id()] = ex
+            self._instances_phases[ex.get_id()] = []
         self.set_phases()
         return ex._id
 
-    def _get_executor(self, ex_id: str) -> Union[PipelineExecutor, None]:
+    def _get_instance(self, instance_id: str) -> Union[PipelineInstance, None]:
         with self._lock:
-            return self._pipeline_executors.get(ex_id, None)
+            return self._pipeline_instances.get(instance_id, None)
     
-    def unregister_executor(self, ex_id: str) -> None:
-        ex = self._get_executor(ex_id)
+    def unregister_instance(self, ex_id: str) -> None:
+        ex = self._get_instance(ex_id)
         if ex:
             with self._lock:
-                del self._pipeline_executors[ex_id]
-                del self._executors_phases[ex_id]
+                del self._pipeline_instances[ex_id]
+                del self._instances_phases[ex_id]
 
-    def execute(self, data: Any, executor_id: str, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
-        ex = self._get_executor(executor_id)
+    def execute(self, data: Any, instance_id: str, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
+        ex = self._get_instance(instance_id)
         if not ex:
-            raise ValueError("Executor ID not found")
+            raise ValueError("Instance ID not found")
         
         temp_phases = []
         with self._lock:
-            temp_phases = self._executors_phases.get(executor_id, []).copy()
+            temp_phases = self._instances_phases.get(instance_id, []).copy()
 
         # Put data into DataPackage
         dp = DataPackage(
             pipeline_id=self._id,
-            pipeline_executer_id=executor_id,
+            pipeline_executer_id=instance_id,
             data=data
         )
 

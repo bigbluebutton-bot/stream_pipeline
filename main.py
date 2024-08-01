@@ -69,7 +69,7 @@ class AlwaysTrue(ExecutionModule):
 
 # Setting up the processing pipeline
 pre_phase = PipelinePhase([
-    ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+    # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
     DataValidationModule()
     ])
 main_phase = PipelinePhase([
@@ -89,7 +89,7 @@ phases = [pre_phase, main_phase, post_phase]
 
 
 pipeline = Pipeline(phases, "test-pipeline")
-pip_ex_id = pipeline.register_executor()
+pip_ex_id = pipeline.register_instance()
 
 counter = 0
 counter_mutex = threading.Lock()
@@ -136,7 +136,7 @@ while True:
     if counter >= len(data_list):
         break
 
-pipeline.unregister_executor(pip_ex_id)
+pipeline.unregister_instance(pip_ex_id)
 
 print("THE END")
 time.sleep(50000)
