@@ -1,5 +1,5 @@
 # module_classes.py
-
+import copy
 from abc import ABC, abstractmethod
 import threading
 from typing import  Any, Dict, List, Tuple, Union, final, NamedTuple
@@ -168,6 +168,27 @@ class Module(ABC):
         Performs an operation on the data package.
         """
         pass
+
+    def __deepcopy__(self, memo):
+        # Check if the object is already in memo
+        if id(self) in memo:
+            return memo[id(self)]
+        
+        # Create a copy of the object
+        copy_obj = self.__class__.__new__(self.__class__)
+        
+        # Store the copy in memo
+        memo[id(self)] = copy_obj
+        
+        # Deep copy all instance attributes
+        for k, v in self.__dict__.items():
+            setattr(copy_obj, k, copy.deepcopy(v, memo))
+        
+        # Ensure that the _locks attribute is copied correctly
+        if id(self) in self._locks:
+            copy_obj._locks[id(copy_obj)] = threading.RLock()
+        
+        return copy_obj
 
 class ExecutionModule(Module, ABC):
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):

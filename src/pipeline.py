@@ -62,6 +62,14 @@ class PipelinePhase:
         dp_phase.end_time = ent_time
         dp_phase.processing_time = ent_time - start_time
 
+    def __deepcopy__(self, memo: Dict) -> 'PipelinePhase':
+        copied_phase = PipelinePhase(
+            modules=[module.__deepcopy__(memo) for module in self._modules],
+            name=self._name
+        )
+        copied_phase._id = self._id
+        return copied_phase
+
 
 class ParallelPhaseExecution:
     def __init__(self, phases: List[PipelinePhase], mode: ParallelExecutionMode, name: str = "", max_workers: int = 10) -> None:
@@ -142,15 +150,12 @@ class PipelineExecutor:
             return self._name
 
 class Pipeline:
-    # List of Phaseobjects to pretend that the pipeline is a list of new phases and this phase is not in any other pipeline
-    _phases_list: List[PipelinePhase] = [] # static
-    _phases_list_lock = threading.Lock() # static
-
     def __init__(self, phases: List[PipelinePhase], name: str = "") -> None:
         self._id: str = f"P-{uuid.uuid4()}"
         self._name: str = name if name else self._id
         self._phases: List[PipelinePhase] = []
-        self._pipeline_executors: Dict[str, PipelineExecutor] = {}
+        self._executors_phases: Dict[str, List[PipelinePhase]] = {} # Each executor has its own copy of the phases
+        self._pipeline_executors: Dict[str, PipelineExecutor] = {} # Dict of executors
 
         self._lock = threading.Lock()
 
@@ -164,22 +169,29 @@ class Pipeline:
         with self._lock:
             return self._name
 
-    def set_phases(self, phases: List[PipelinePhase]) -> None:
-        with self._phases_list_lock:
-            for phase in phases:
-                if phase in self._phases_list:
-                    raise ValueError("Phases are not unique. Create new phases obj for each pipeline to prevent hard to debug errors.")
-                else:
-                    self._phases_list.append(phase)
-        
+    def set_phases(self, phases: Union[List[PipelinePhase], None] = None) -> None:
+        """
+        This will set the phases for the pipeline and create a deepcopy for each phase and modules.
+        """
+
+        if phases:
+            with self._lock:
+                for phase in phases:
+                    self._phases.append(phase.__deepcopy__({}))
+
+        # for each executor create a deepcopy of the phases
         with self._lock:
-            self._phases = phases
+            for ex_id in self._pipeline_executors:
+                for phase in self._phases:
+                    self._executors_phases[ex_id].append(phase.__deepcopy__({}))
 
     def register_executor(self) -> str:
         ex = PipelineExecutor(name=f"")
         with self._lock:
             self._pipeline_executors[ex.get_id()] = ex
-            return ex._id
+            self._executors_phases[ex.get_id()] = []
+        self.set_phases()
+        return ex._id
 
     def _get_executor(self, ex_id: str) -> Union[PipelineExecutor, None]:
         with self._lock:
@@ -188,9 +200,9 @@ class Pipeline:
     def unregister_executor(self, ex_id: str) -> None:
         ex = self._get_executor(ex_id)
         if ex:
-            # ex.stop() # TODO: Implement stop method
             with self._lock:
                 del self._pipeline_executors[ex_id]
+                del self._executors_phases[ex_id]
 
     def execute(self, data: Any, executor_id: str, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
         ex = self._get_executor(executor_id)
@@ -199,7 +211,7 @@ class Pipeline:
         
         temp_phases = []
         with self._lock:
-            temp_phases = self._phases.copy()
+            temp_phases = self._executors_phases.get(executor_id, []).copy()
 
         # Put data into DataPackage
         dp = DataPackage(
