@@ -4,7 +4,7 @@ import threading
 from typing import Union
 from src.data_package import DataPackageModule
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
-from src.pipeline import Pipeline, ParallelExecutionMode, PipelinePhase
+from src.pipeline import Pipeline, PhaseExecutionMode, PipelinePhase, PipelinePhaseExecution
 from prometheus_client import start_http_server
 import concurrent.futures
 import time
@@ -31,7 +31,7 @@ class DataTransformationModule(ExecutionModule):
     def __init__(self):
         super().__init__(ModuleOptions(
             use_mutex=False,
-            timeout=4.0
+            timeout=40.0
         ))
 
     def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
@@ -68,25 +68,49 @@ class AlwaysTrue(ExecutionModule):
         dpm.message = "Always true"
 
 # Setting up the processing pipeline
-pre_phase = PipelinePhase([
-    # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
-    DataValidationModule()
-    ])
-main_phase = PipelinePhase([
-    DataConditionModule(SuccessModule(), FailureModule()),
-    DataTransformationModule(),
-])
-post_phase = PipelinePhase([
-    CombinationModule([
-        CombinationModule([
-            AlwaysTrue(),
-        ]),
-    ])
-])
 
-phases = [pre_phase, main_phase, post_phase]
-
-
+phases = [
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        max_workers=10,
+        name="phase1",
+        phases=[
+            PipelinePhase([
+                # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+                DataValidationModule(),
+            ]),
+        ],
+    ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        max_workers=10,
+        name="phase2",
+        phases=[
+            PipelinePhase([
+                DataConditionModule(SuccessModule(), FailureModule()),
+                AlwaysTrue(),
+            ]),
+        ],
+    ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        max_workers=10,
+        name="phase3",
+        phases=[
+            PipelinePhase([
+                CombinationModule([
+                    CombinationModule([
+                        DataTransformationModule(),
+                    ], ModuleOptions(
+                        use_mutex=False,
+                    )),
+                ], ModuleOptions(
+                        use_mutex=False,
+                    ))
+            ]),
+        ],
+    ),
+]
 
 pipeline = Pipeline(phases, "test-pipeline")
 pip_ex_id = pipeline.register_instance()

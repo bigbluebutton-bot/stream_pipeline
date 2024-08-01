@@ -30,7 +30,7 @@ class ModuleOptions(NamedTuple):
         use_mutex (bool): whether to use a mutex lock for thread safety (Default: True)
         timeout (float): timeout to stop executing after x seconds. If 0.0, waits indefinitely (Default: 0.0)
     """
-    use_mutex: bool = True
+    use_mutex: bool = False
     timeout: float = 0.0
 
 class Module(ABC):

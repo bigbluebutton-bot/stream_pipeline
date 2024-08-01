@@ -134,24 +134,88 @@ class DataPackagePhase(ThreadSafeClass):
         return grpc_phase
 
 @dataclass
+class DataPackagePhaseExecution(ThreadSafeClass):
+    """
+    Class which contains metadata for a phase execution that has processed a data package.
+    Attributes:
+        execution_id (str):                     ID of the phase execution
+        mode (str):                             Type of the phase execution (NOT_PARALLEL, ORDER_BY_SEQUENCE, FIRST_WINS, NO_ORDER)
+        workers (int):                          Number of workers used for executing those phases in parallel. But still in order. 0 means no multi-threading.
+        sequence_number (int):                  The sequence number of the data package.
+        running (bool):                         Indicates if the phase is running.
+        start_time (float):                     Time when the phase was started.
+        end_time (float):                       Time when the phase finished.
+        waiting_time (float):                   Time spent waiting for the threadpool to unlock.
+        processing_time (float):                Time spent processing the phases.
+        total_time (float):                     Total time spent processing the phases.
+        phases (List[DataPackagePhase]):        List of phases that have processed the data package. Including measurements.
+    """
+    execution_id: str = field(default_factory=lambda: "PhaseExecution-" + str(uuid.uuid4()))
+    mode: str = "NOT_PARALLEL"
+    workers: int = 1
+    sequence_number: int = -1
+    running: bool = False
+    start_time: float = 0.0
+    end_time: float = 0.0
+    waiting_time: float = 0.0
+    processing_time: float = 0.0
+    total_time: float = 0.0
+    phases: List[DataPackagePhase] = field(default_factory=list)
+
+    def set_from_grpc(self, grpc_execution):
+        self.execution_id = grpc_execution.execution_id
+        self.mode = grpc_execution.type
+        self.workers = grpc_execution.workers
+        self.sequence_number = grpc_execution.sequence_number
+        self.running = grpc_execution.running
+        self.start_time = grpc_execution.start_time
+        self.end_time = grpc_execution.end_time
+        self.waiting_time = grpc_execution.waiting_time
+        self.processing_time = grpc_execution.processing_time
+        self.total_time = grpc_execution.total_time
+
+        existing_phases = {phase.phase_id: phase for phase in self.phases}
+        for phase in grpc_execution.phases:
+            if phase:
+                if phase.phase_id in existing_phases:
+                    existing_phases[phase.phase_id].set_from_grpc(phase)
+                else:
+                    new_phase = DataPackagePhase()
+                    new_phase.set_from_grpc(phase)
+                    self.phases.append(new_phase)
+
+    def to_grpc(self):
+        grpc_execution = data_pb2.DataPackagePhaseExecution()
+        grpc_execution.execution_id = self.execution_id
+        grpc_execution.mode = self.mode
+        grpc_execution.workers = self.workers
+        grpc_execution.sequence_number = self.sequence_number
+        grpc_execution.running = self.running
+        grpc_execution.start_time = self.start_time
+        grpc_execution.end_time = self.end_time
+        grpc_execution.waiting_time = self.waiting_time
+        grpc_execution.processing_time = self.processing_time
+        grpc_execution.total_time = self.total_time
+        grpc_execution.phases.extend([phase.to_grpc() for phase in self.phases])
+        return grpc_execution
+
+@dataclass
 class DataPackage(ThreadSafeClass):
     """
     Class which contains the data and metadata for a pipeline process and will be passed through the pipeline and between modules.
     Attributes:
-        id (str) immutable:                     Unique identifier for the data package.
-        pipeline_id (str):                      ID of the pipeline handling this package.
-        pipeline_executer_id (str) immutable:   ID of the pipeline executor handling this package.
-        sequence_number (int):                  The sequence number of the data package.
-        phases (List[DataPackagePhase]):        List of phases that have processed the data package. Including measurements.
-        data (Any):                             The actual data contained in the package.
-        success (bool):                         Indicates if the process was successful. If not successful, the error attribute should be set.
-        errors (Error):                         List of errors that occurred during the processing of the data package.
+        id (str) immutable:                         Unique identifier for the data package.
+        pipeline_id (str):                          ID of the pipeline handling this package.
+        pipeline_executer_id (str) immutable:       ID of the pipeline executor handling this package.
+        phases (List[DataPackagePhaseExecution]):   List of phases which have been processed in mode of execution.
+        data (Any):                                 The actual data contained in the package.
+        success (bool):                             Indicates if the process was successful. If not successful, the error attribute should be set.
+        errors (Error):                             List of errors that occurred during the processing of the data package.
     """
     id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
     pipeline_id: str = ""
     pipeline_executer_id: str = ""
-    sequence_number: int = -1
-    phases: List[DataPackagePhase] = field(default_factory=list)
+    phases: List[DataPackagePhaseExecution] = field(default_factory=list)
     data: Any = None
     running: bool = False
     success: bool = True
@@ -171,17 +235,16 @@ class DataPackage(ThreadSafeClass):
 
         self.pipeline_id = grpc_package.pipeline_id
         self.pipeline_executer_id = grpc_package.pipeline_executer_id
-        self.sequence_number = grpc_package.sequence_number
 
-        existing_phases = {phase.phase_id: phase for phase in self.phases}
-        for phase in grpc_package.phases:
-            if phase:
-                if phase.phase_id in existing_phases:
-                    existing_phases[phase.phase_id].set_from_grpc(phase)
+        existing_phases = {phase.execution_id: phase for phase in self.phases}
+        for execution in grpc_package.phases:
+            if execution:
+                if execution.execution_id in existing_phases:
+                    existing_phases[execution.execution_id].set_from_grpc(execution)
                 else:
-                    new_phase = DataPackagePhase()
-                    new_phase.set_from_grpc(phase)
-                    self.phases.append(new_phase)
+                    new_execution = DataPackagePhaseExecution()
+                    new_execution.set_from_grpc(execution)
+                    self.phases.append(new_execution)
 
         self.data = pickle.loads(grpc_package.data)
         self.running = grpc_package.running
@@ -203,7 +266,6 @@ class DataPackage(ThreadSafeClass):
         grpc_package = data_pb2.DataPackage()
         grpc_package.pipeline_id = self.pipeline_id
         grpc_package.pipeline_executer_id = self.pipeline_executer_id
-        grpc_package.sequence_number = self.sequence_number
         grpc_package.phases.extend([phase.to_grpc() for phase in self.phases])
         grpc_package.data = pickle.dumps(self.data)
         grpc_package.running = self.running
