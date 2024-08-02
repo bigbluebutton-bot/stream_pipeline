@@ -81,35 +81,35 @@ phases = [
             ]),
         ],
     ),
-    PipelinePhaseExecution(
-        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
-        max_workers=10,
-        name="phase2",
-        phases=[
-            PipelinePhase([
-                DataConditionModule(SuccessModule(), FailureModule()),
-                AlwaysTrue(),
-            ]),
-        ],
-    ),
-    PipelinePhaseExecution(
-        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
-        max_workers=10,
-        name="phase3",
-        phases=[
-            PipelinePhase([
-                CombinationModule([
-                    CombinationModule([
-                        DataTransformationModule(),
-                    ], ModuleOptions(
-                        use_mutex=False,
-                    )),
-                ], ModuleOptions(
-                        use_mutex=False,
-                    ))
-            ]),
-        ],
-    ),
+    # PipelinePhaseExecution(
+    #     mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+    #     max_workers=10,
+    #     name="phase2",
+    #     phases=[
+    #         PipelinePhase([
+    #             DataConditionModule(SuccessModule(), FailureModule()),
+    #             AlwaysTrue(),
+    #         ]),
+    #     ],
+    # ),
+    # PipelinePhaseExecution(
+    #     mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+    #     max_workers=10,
+    #     name="phase3",
+    #     phases=[
+    #         PipelinePhase([
+    #             CombinationModule([
+    #                 CombinationModule([
+    #                     DataTransformationModule(),
+    #                 ], ModuleOptions(
+    #                     use_mutex=False,
+    #                 )),
+    #             ], ModuleOptions(
+    #                     use_mutex=False,
+    #                 ))
+    #         ]),
+    #     ],
+    # ),
 ]
 
 pipeline = Pipeline(phases, "test-pipeline")
