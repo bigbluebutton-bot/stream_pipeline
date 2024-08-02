@@ -70,28 +70,28 @@ class AlwaysTrue(ExecutionModule):
 # Setting up the processing pipeline
 
 phases = [
-    PipelinePhaseExecution(
-        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
-        max_workers=10,
-        name="phase1",
-        phases=[
-            PipelinePhase([
-                # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
-                DataValidationModule(),
-            ]),
-        ],
-    ),
-    PipelinePhaseExecution(
-        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
-        max_workers=10,
-        name="phase2",
-        phases=[
-            PipelinePhase([
-                DataConditionModule(SuccessModule(), FailureModule()),
-                AlwaysTrue(),
-            ]),
-        ],
-    ),
+    # PipelinePhaseExecution(
+    #     mode=PhaseExecutionMode.NOT_PARALLEL,
+    #     max_workers=10,
+    #     name="phase1",
+    #     phases=[
+    #         PipelinePhase([
+    #             # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+    #             DataValidationModule(),
+    #         ]),
+    #     ],
+    # ),
+    # PipelinePhaseExecution(
+    #     mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+    #     max_workers=10,
+    #     name="phase2",
+    #     phases=[
+    #         PipelinePhase([
+    #             DataConditionModule(SuccessModule(), FailureModule()),
+    #             AlwaysTrue(),
+    #         ]),
+    #     ],
+    # ),
     PipelinePhaseExecution(
         mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
         max_workers=10,

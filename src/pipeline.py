@@ -139,26 +139,56 @@ class OrderTracker:
             else:
                 raise ValueError("Sequence number not found in data packages.")
 
-    def pop_finished_data_packages(self) -> List[DataPackage]:
+    def pop_finished_data_packages(self, mode: PhaseExecutionMode) -> List[DataPackage]:
         """
-        Returns a dict of finished data packages in order of sequence number until the first missing sequence number and removes them from the queue.
-        Example:
-            Queue: [1, 2, 5, 6, 7]
-                -> Returns: [1, 2]
-            Queue left: [5, 6, 7]
-        Returns:
-            List[DataPackage]: List of finished data packages.
+        NOT_PARALLEL or NO_ORDER:
+            Example:
+                Queue: [1, 2, 5, 6, 7]
+                    -> Returns: [1, 2, 5, 6, 7]
+                Queue left: []
+
+        ORDER_BY_SEQUENCE:
+            Example:
+                Queue: [1, 2, 5, 6, 7]
+                    -> Returns: [1, 2]
+                Queue left: [5, 6, 7]
+
+        FIRST_WINS:
+            Example:
+                last finished: 4
+                Queue: [1, 2, 5, 6, 7]
+                    -> Returns: [5, 6, 7]
+                Queue left: []
         """
         with self._lock:
             finished_data_packages: List[DataPackage] = []
-            current_sequence = self._last_finished_sequence_number + 1
 
-            while current_sequence in self._finished_data_packages:
-                data_package = self._finished_data_packages.pop(current_sequence)
-                finished_data_packages.append(data_package)
-                self._last_finished_sequence_number = current_sequence
-                current_sequence += 1
+            if (mode == PhaseExecutionMode.NOT_PARALLEL or mode == PhaseExecutionMode.NO_ORDER):
+                for sequence_number, data_package in self._finished_data_packages.items():
+                    finished_data_packages.append(data_package)
+                self._finished_data_packages = {}
+                    
+            elif mode == PhaseExecutionMode.ORDER_BY_SEQUENCE:
+                current_sequence = self._last_finished_sequence_number + 1
 
+                while current_sequence in self._finished_data_packages:
+                    data_package = self._finished_data_packages.pop(current_sequence)
+                    finished_data_packages.append(data_package)
+                    self._last_finished_sequence_number = current_sequence
+                    current_sequence = current_sequence + 1
+
+            elif mode == PhaseExecutionMode.FIRST_WINS:
+                # find each dp which has a bigger sequence number than the last finished sequence number
+                last_sequence_number = self._last_finished_sequence_number + 1
+                for sequence_number, data_package in self._finished_data_packages.items():
+                    if sequence_number >= last_sequence_number:
+                        finished_data_packages.append(data_package)
+                        self._last_finished_sequence_number = sequence_number
+                        last_sequence_number = sequence_number + 1
+
+                # remove the data packages from the finished queue
+                self._finished_data_packages.clear()
+                
             return finished_data_packages
 
 class PipelinePhaseExecution:
@@ -217,45 +247,14 @@ class PipelinePhaseExecution:
                         break
 
                 with instance_lock:
-                    if self._mode == PhaseExecutionMode.ORDER_BY_SEQUENCE:
-                        # print(f"Finished: {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
-                        self._order_tracker.push_finished_data_package(dp_phase_ex.sequence_number)
-                        finished_data_packages = self._order_tracker.pop_finished_data_packages()
-                        # print(f"Finished data packages: {len(finished_data_packages)}")
-                        for finished_data_package in finished_data_packages:
-                            # print(f"{dp_phase_ex.sequence_number}")
-                            if finished_data_package.success:
-                                callback(finished_data_package)
-                            else:
-                                if error_callback:
-                                    error_callback(finished_data_package)
-
-                    elif self._mode == PhaseExecutionMode.FIRST_WINS:
-                        with self._lock:
-                            last_finished_sequence_number = self._order_tracker.get_last_finished_sequence_number()
-                            if dp_phase_ex.sequence_number <= last_finished_sequence_number and data_package.success:
-                                self._active_futures.pop(f"{self.get_id()}-{dp_phase_ex.sequence_number}")
-                                self._order_tracker.remove_data(dp_phase_ex.sequence_number)
-                                if not data_package.success:
-                                    error_callback(data_package)
-                            else:
-                                self._order_tracker.set_last_finished_sequence_number(dp_phase_ex.sequence_number)
-                                callback(data_package)
-
-                    elif self._mode == PhaseExecutionMode.NO_ORDER:
-                        self._order_tracker.remove_data(dp_phase_ex.sequence_number)
-                        if data_package.success:
-                            callback(data_package)
+                    self._order_tracker.push_finished_data_package(dp_phase_ex.sequence_number)
+                    finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
+                    for finished_data_package in finished_data_packages:
+                        if finished_data_package.success:
+                            callback(finished_data_package)
                         else:
                             if error_callback:
-                                error_callback(data_package)
-
-                    elif self._mode == PhaseExecutionMode.NOT_PARALLEL:
-                        if data_package.success:
-                            callback(data_package)
-                        else:
-                            if error_callback:
-                                error_callback(data_package)
+                                error_callback(finished_data_package)
 
             except Exception as e:
                 data_package.success = False
