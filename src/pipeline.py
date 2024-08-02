@@ -309,6 +309,7 @@ class PipelineInstance:
     def __init__(self, name: str = "") -> None:
         self._id: str = f"PE-{uuid.uuid4()}"
         self._name: str = name if name else self._id
+        self._phases_execution_queue: Dict[str, List[PipelinePhaseExecution]] = {}
 
         self._lock = threading.Lock()
         self._execution_lock = threading.Lock()
@@ -316,20 +317,28 @@ class PipelineInstance:
     def execute(self, phases: List[PipelinePhaseExecution], dp: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
         dp.pipeline_executer_id = self._id
 
-        phases_queue = phases.copy()
+        self._phases_execution_queue[dp.id] = phases.copy()
 
         def new_callback(dp: DataPackage) -> None:
+            nonlocal callback, error_callback
+            left_phases = []
+            for phase in self._phases_execution_queue[dp.id]:
+                left_phases.append(phase._name)
+
+            # print(f"{dp.data} {len(dp.phases)}/{len(phases)}({len(self._phases_execution_queue[dp.id])}) {left_phases}")
+
             if not dp.success and error_callback:
+                del self._phases_execution_queue[dp.id]
                 error_callback(dp)
+                return
 
-            # print(f"{dp.data} {len(dp.phases)}/{len(phases)}({len(phases_queue)})")
-
-            if len(phases_queue) > 0:
-                phase = phases_queue.pop(0)
+            if len(self._phases_execution_queue[dp.id]) > 0:
+                phase = self._phases_execution_queue[dp.id].pop(0)
                 phase.execute(self._execution_lock, dp, new_callback, error_callback)
                 # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
                 return
             
+            del self._phases_execution_queue[dp.id]
             callback(dp)
 
         new_callback(dp)

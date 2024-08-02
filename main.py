@@ -81,35 +81,35 @@ phases = [
             ]),
         ],
     ),
-    # PipelinePhaseExecution(
-    #     mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
-    #     max_workers=10,
-    #     name="phase2",
-    #     phases=[
-    #         PipelinePhase([
-    #             DataConditionModule(SuccessModule(), FailureModule()),
-    #             AlwaysTrue(),
-    #         ]),
-    #     ],
-    # ),
-    # PipelinePhaseExecution(
-    #     mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
-    #     max_workers=10,
-    #     name="phase3",
-    #     phases=[
-    #         PipelinePhase([
-    #             CombinationModule([
-    #                 CombinationModule([
-    #                     DataTransformationModule(),
-    #                 ], ModuleOptions(
-    #                     use_mutex=False,
-    #                 )),
-    #             ], ModuleOptions(
-    #                     use_mutex=False,
-    #                 ))
-    #         ]),
-    #     ],
-    # ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        max_workers=10,
+        name="phase2",
+        phases=[
+            PipelinePhase([
+                DataConditionModule(SuccessModule(), FailureModule()),
+                AlwaysTrue(),
+            ]),
+        ],
+    ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        max_workers=10,
+        name="phase3",
+        phases=[
+            PipelinePhase([
+                CombinationModule([
+                    CombinationModule([
+                        DataTransformationModule(),
+                    ], ModuleOptions(
+                        use_mutex=False,
+                    )),
+                ], ModuleOptions(
+                        use_mutex=False,
+                    ))
+            ]),
+        ],
+    ),
 ]
 
 pipeline = Pipeline(phases, "test-pipeline")
@@ -156,11 +156,13 @@ for d in data_list:
 
 # Keep the main thread alive
 while True:
-    time.sleep(1)
+    time.sleep(0.001)
     if counter >= len(data_list):
         break
 
 pipeline.unregister_instance(pip_ex_id)
 
+
+
 print("THE END")
-time.sleep(50000)
+# time.sleep(50000)
