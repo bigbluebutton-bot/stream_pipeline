@@ -195,7 +195,7 @@ class DataPackagePhaseController(ThreadSafeClass):
         self._immutable_attributes = []
 
         self.id = grpc_execution.id
-        self.mode = grpc_execution.type
+        self.mode = grpc_execution.mode
         self.workers = grpc_execution.workers
         self.sequence_number = grpc_execution.sequence_number
         self.running = grpc_execution.running
@@ -221,7 +221,7 @@ class DataPackagePhaseController(ThreadSafeClass):
         """
         Converts the current instance to a gRPC phase execution.
         """
-        grpc_execution = data_pb2.DataPackagePhaseExecution()
+        grpc_execution = data_pb2.DataPackagePhaseController()
         grpc_execution.id = self.id
         grpc_execution.mode = self.mode
         grpc_execution.workers = self.workers
@@ -285,7 +285,7 @@ class DataPackage(ThreadSafeClass):
         self.pipeline_instance_id = grpc_package.pipeline_instance_id
 
         existing_phases = {phase.id: phase for phase in self.controller}
-        for execution in grpc_package.phases:
+        for execution in grpc_package.controller:
             if execution:
                 if execution.id in existing_phases:
                     existing_phases[execution.id].set_from_grpc(execution)
@@ -323,7 +323,7 @@ class DataPackage(ThreadSafeClass):
         grpc_package.id = self.id
         grpc_package.pipeline_id = self.pipeline_id
         grpc_package.pipeline_instance_id = self.pipeline_instance_id
-        grpc_package.phases.extend([phase.to_grpc() for phase in self.controller])
+        grpc_package.controller.extend([phase.to_grpc() for phase in self.controller])
         grpc_package.data = pickle.dumps(self.data)
         grpc_package.running = self.running
         grpc_package.start_time = self.start_time

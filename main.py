@@ -76,7 +76,6 @@ phases = [
         name="phase1",
         phases=[
             PipelinePhase([
-                # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
                 DataValidationModule(),
             ]),
         ],
@@ -101,6 +100,7 @@ phases = [
                 CombinationModule([
                     CombinationModule([
                         DataTransformationModule(),
+                        ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
                     ], ModuleOptions(
                         use_mutex=False,
                     )),

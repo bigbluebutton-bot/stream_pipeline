@@ -26,29 +26,33 @@ def grpc_to_normal(request_grpc: RequestDPandDPM) -> Tuple[DataPackage, Union[No
         return None
 
     def find_and_set_module(dp: DataPackage, dpm: DataPackageModule) -> DataPackageModule:
-        for phase in dp.controller:
-            for module in phase.modules:
-                if module.module_id == dpm.id:
-                    return module
-                found_module = find_module(module)
-                if found_module:
-                    return found_module
+        for phase_controller in dp.controller:
+            for phase in phase_controller.phases:
+                for module in phase.modules:
+                    if module.id == dpm.id:
+                        return module
+                    found_module = find_module(module)
+                    if found_module:
+                        return found_module
         return dpm
 
     dpm = find_and_set_module(dp, dpm)
     return dp, dpm
 
 # Function to convert normal objects to gRPC messages
-def normal_to_grpc(request: DataPackage, error: Union[None, Exception] = None) -> ReturnDPandError:
+def normal_to_grpc(request: Union[DataPackage, None], error: Union[None, Exception] = None) -> ReturnDPandError:
     error_grpc: Union[None, Any] = None
     if error:
         error = exception_to_error(error)
         if error:
             error_grpc = error.to_grpc()
-    request_grpc = request.to_grpc()
+    
+
+    request_grpc = request.to_grpc() if request else None
 
     return_dp_and_error = ReturnDPandError()
-    return_dp_and_error.data_package.CopyFrom(request_grpc)
+    if request_grpc:
+        return_dp_and_error.data_package.CopyFrom(request_grpc)
     if error_grpc:
         return_dp_and_error.error.CopyFrom(error_grpc)
     return return_dp_and_error
@@ -59,6 +63,7 @@ class ModuleServiceServicer(ModuleServiceServicerBase):
         self.module = module
 
     def run(self, request_grpc: RequestDPandDPM, context: grpc.ServicerContext) -> ReturnDPandError:
+        data_package: Union[None, DataPackage] = None
         try:
             # Convert gRPC request to normal objects
             data_package, data_package_module = grpc_to_normal(request_grpc)
@@ -74,9 +79,9 @@ class ModuleServiceServicer(ModuleServiceServicerBase):
             try:
                 return_dp_and_error = normal_to_grpc(data_package, e)
                 return return_dp_and_error
-            except:
+            except Exception as nested_exception:
                 return_dp_and_error = ReturnDPandError()
-                return_dp_and_error.error.CopyFrom(exception_to_error(e).to_grpc()) # type: ignore
+                return_dp_and_error.error.CopyFrom(exception_to_error(nested_exception).to_grpc()) # type: ignore
                 return return_dp_and_error
 
 # gRPC server class
