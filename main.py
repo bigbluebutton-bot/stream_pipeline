@@ -70,30 +70,30 @@ class AlwaysTrue(ExecutionModule):
 # Setting up the processing pipeline
 
 phases = [
-    # PipelinePhaseExecution(
-    #     mode=PhaseExecutionMode.NOT_PARALLEL,
-    #     max_workers=10,
-    #     name="phase1",
-    #     phases=[
-    #         PipelinePhase([
-    #             # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
-    #             DataValidationModule(),
-    #         ]),
-    #     ],
-    # ),
-    # PipelinePhaseExecution(
-    #     mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
-    #     max_workers=10,
-    #     name="phase2",
-    #     phases=[
-    #         PipelinePhase([
-    #             DataConditionModule(SuccessModule(), FailureModule()),
-    #             AlwaysTrue(),
-    #         ]),
-    #     ],
-    # ),
     PipelinePhaseExecution(
         mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        max_workers=10,
+        name="phase1",
+        phases=[
+            PipelinePhase([
+                # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+                DataValidationModule(),
+            ]),
+        ],
+    ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.NOT_PARALLEL,
+        max_workers=10,
+        name="phase2",
+        phases=[
+            PipelinePhase([
+                DataConditionModule(SuccessModule(), FailureModule()),
+                AlwaysTrue(),
+            ]),
+        ],
+    ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.NO_ORDER,
         max_workers=10,
         name="phase3",
         phases=[
@@ -130,8 +130,8 @@ def error_callback(processed_data: DataPackage):
         counter = counter + 1
 
 # Function to execute the processing pipeline
-def process_data(data):
-    pipeline.execute(data, pip_ex_id, callback, error_callback)
+def process_data(data) -> Union[DataPackage, None]:
+    return pipeline.execute(data, pip_ex_id, callback, error_callback)
 
 # Example data
 data_list = [
@@ -146,9 +146,9 @@ data_list = [
     {"key": "value8", "condition": True},
     {"key": "value9", "condition": False},
 ]
-
+dp: Union[DataPackage, None] = None
 for d in data_list:
-    process_data(d)
+    dp = process_data(d)
 
 # # Using ThreadPoolExecutor for multithreading
 # with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:

@@ -246,6 +246,8 @@ class PipelinePhaseExecution:
                     if not data_package.success:
                         break
 
+                # print(f"Phase {self._name} finished {data_package.data} with sequence number {dp_phase_ex.sequence_number}: {id(self._order_tracker)}")
+
                 with instance_lock:
                     self._order_tracker.push_finished_data_package(dp_phase_ex.sequence_number)
                     finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
@@ -390,9 +392,9 @@ class Pipeline:
 
         # for each instance create a deepcopy of the phases
         with self._lock:
-            for ex_id in self._pipeline_instances:
+            for phase in self._phases:
                 order_tracker = OrderTracker()
-                for phase in self._phases:
+                for ex_id in self._pipeline_instances:
                     copy_phase = phase.__deepcopy__({})
                     copy_phase.set_order_tracker(order_tracker)
                     self._instances_phases[ex_id].append(copy_phase)
@@ -416,7 +418,7 @@ class Pipeline:
                 del self._pipeline_instances[ex_id]
                 del self._instances_phases[ex_id]
 
-    def execute(self, data: Any, instance_id: str, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
+    def execute(self, data: Any, instance_id: str, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> DataPackage:
         ex = self._get_instance(instance_id)
         if not ex:
             raise ValueError("Instance ID not found")
@@ -434,3 +436,4 @@ class Pipeline:
 
         dp.running = True
         ex.execute(temp_phases, dp, callback, error_callback)
+        return dp
