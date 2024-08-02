@@ -18,7 +18,7 @@ def grpc_to_normal(request_grpc: RequestDPandDPM) -> Tuple[DataPackage, Union[No
 
     def find_module(data_package_module: DataPackageModule) -> Union[None, DataPackageModule]:
         for sm in data_package_module.sub_modules:
-            if sm.module_id == dpm.module_id:
+            if sm.id == dpm.id:
                 return sm
             found_module = find_module(sm)
             if found_module:
@@ -26,9 +26,9 @@ def grpc_to_normal(request_grpc: RequestDPandDPM) -> Tuple[DataPackage, Union[No
         return None
 
     def find_and_set_module(dp: DataPackage, dpm: DataPackageModule) -> DataPackageModule:
-        for phase in dp.phases:
+        for phase in dp.controller:
             for module in phase.modules:
-                if module.module_id == dpm.module_id:
+                if module.module_id == dpm.id:
                     return module
                 found_module = find_module(module)
                 if found_module:

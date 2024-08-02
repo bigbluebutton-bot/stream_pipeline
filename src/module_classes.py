@@ -66,7 +66,7 @@ class Module(ABC):
         Measures and records the execution time and waiting time.
         """
         dpm = DataPackageModule(
-                module_id=self._id,
+                id=self._id,
                 running=True,
                 start_time=0.0,
                 end_time=0.0,

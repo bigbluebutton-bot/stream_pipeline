@@ -165,4 +165,5 @@ pipeline.unregister_instance(pip_ex_id)
 
 
 print("THE END")
+print(dp)
 # time.sleep(50000)

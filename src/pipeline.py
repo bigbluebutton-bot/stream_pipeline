@@ -9,7 +9,7 @@ from enum import Enum
 import uuid
 from prometheus_client import Gauge, Summary
 
-from .data_package import DataPackage, DataPackagePhase, DataPackagePhaseExecution
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackagePhaseController
 
 PIPELINE_ERROR_COUNTER = Gauge('pipeline_error_counter', 'Number of errors in the pipeline', ['pipeline_name'])
 PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of processes executing the pipline at the moment', ['pipeline_name'])
@@ -54,7 +54,7 @@ class PipelinePhase:
 
         self._lock = threading.Lock()
 
-    def execute(self, data_package: DataPackage, data_package_executor: DataPackagePhaseExecution) -> None:
+    def execute(self, data_package: DataPackage, data_package_controller: DataPackagePhaseController) -> None:
         start_time = time.time()
 
         with self._lock:
@@ -62,7 +62,7 @@ class PipelinePhase:
                 running=True,
                 start_time=start_time,
             )
-        data_package_executor.phases.append(dp_phase)
+        data_package_controller.phases.append(dp_phase)
 
         for module in self._modules:
             module.run(data_package=data_package, phase=dp_phase)
@@ -213,7 +213,7 @@ class PipelinePhaseExecution:
     def execute(self, instance_lock: threading.Lock, data_package: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
         start_time = time.time()
 
-        dp_phase_ex = DataPackagePhaseExecution(
+        dp_phase_con = DataPackagePhaseController(
             mode=phase_execution_mode_to_str(self._mode),
             workers=self._max_workers,
             sequence_number=self._order_tracker.get_next_sequence_number(),
@@ -222,65 +222,55 @@ class PipelinePhaseExecution:
         )
 
         # print(f"Starting {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
-        data_package.phases.append(dp_phase_ex)
+        data_package.controller.append(dp_phase_con)
         
         self._order_tracker.add_data(data_package)
         
         start_context = threading.current_thread().name
 
-        waiting_time = 0.0
-
         def execute_phases() -> None:
-            nonlocal waiting_time, start_context, dp_phase_ex, data_package, start_time, instance_lock
+            nonlocal start_context, dp_phase_con, data_package, start_time, instance_lock
             try:
                 start_processing_time = time.time()
-                waiting_time = time.time() - start_time
-                dp_phase_ex.waiting_time = waiting_time
+                dp_phase_con.waiting_time = time.time() - start_time
 
                 temp_phases = []
                 with self._lock:
                     temp_phases = self._phases.copy()
 
                 for phase in temp_phases:
-                    phase.execute(data_package, dp_phase_ex)
+                    phase.execute(data_package, dp_phase_con)
                     if not data_package.success:
                         break
 
                 # print(f"Phase {self._name} finished {data_package.data} with sequence number {dp_phase_ex.sequence_number}: {id(self._order_tracker)}")
 
-                with instance_lock:
-                    self._order_tracker.push_finished_data_package(dp_phase_ex.sequence_number)
-                    finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
-                    for finished_data_package in finished_data_packages:
-                        if finished_data_package.success:
-                            callback(finished_data_package)
-                        else:
-                            if error_callback:
-                                error_callback(finished_data_package)
-
             except Exception as e:
                 data_package.success = False
                 data_package.errors.append(e)
-                if error_callback:
-                    error_callback(data_package)
 
 
-            end_time = time.time()
-            total_time = end_time - start_time
-            processing_time = end_time - start_processing_time
-            dp_phase_ex.running = False
-            dp_phase_ex.end_time = end_time
-            dp_phase_ex.processing_time = processing_time
-            dp_phase_ex.total_time = total_time
+            dp_phase_con.end_time = time.time()
+            dp_phase_con.processing_time = dp_phase_con.end_time - start_processing_time
+            dp_phase_con.total_time = dp_phase_con.end_time - dp_phase_con.start_time
+            dp_phase_con.running = False
 
-            data_package.running = False
+            with instance_lock:
+                self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
+                finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
+                for finished_data_package in finished_data_packages:
+                    if finished_data_package.success:
+                        callback(finished_data_package)
+                    else:
+                        if error_callback:
+                            error_callback(finished_data_package)
 
         
         if self._executor is None:
             execute_phases()
             return
 
-        eid = f"{self.get_id()}-{dp_phase_ex.sequence_number}"
+        eid = f"{self.get_id()}-{dp_phase_con.sequence_number}"
         future = self._executor.submit(execute_phases)
         if self._mode == PhaseExecutionMode.FIRST_WINS:
             self._active_futures[eid] = future
@@ -308,7 +298,7 @@ class PipelinePhaseExecution:
 
 class PipelineInstance:
     def __init__(self, name: str = "") -> None:
-        self._id: str = f"PE-{uuid.uuid4()}"
+        self._id: str = f"PI-{uuid.uuid4()}"
         self._name: str = name if name else self._id
         self._phases_execution_queue: Dict[str, List[PipelinePhaseExecution]] = {}
 
@@ -316,7 +306,7 @@ class PipelineInstance:
         self._execution_lock = threading.Lock()
 
     def execute(self, phases: List[PipelinePhaseExecution], dp: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
-        dp.pipeline_executer_id = self._id
+        dp.pipeline_instance_id = self._id
 
         self._phases_execution_queue[dp.id] = phases.copy()
 
@@ -328,19 +318,42 @@ class PipelineInstance:
 
             # print(f"{dp.data} {len(dp.phases)}/{len(phases)}({len(self._phases_execution_queue[dp.id])}) {left_phases}")
 
-            if not dp.success and error_callback:
-                del self._phases_execution_queue[dp.id]
-                error_callback(dp)
-                return
-
-            if len(self._phases_execution_queue[dp.id]) > 0:
-                phase = self._phases_execution_queue[dp.id].pop(0)
-                phase.execute(self._execution_lock, dp, new_callback, error_callback)
-                # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
-                return
+            if dp.success:
+                if len(self._phases_execution_queue[dp.id]) > 0:
+                    phase = self._phases_execution_queue[dp.id].pop(0)
+                    phase.execute(self._execution_lock, dp, new_callback, error_callback)
+                    # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
+                    return
             
             del self._phases_execution_queue[dp.id]
-            callback(dp)
+
+            dp.end_time = time.time()
+            dp.total_time = dp.end_time - dp.start_time
+
+            def calculate_total_waiting_time(module: DataPackageModule) -> float:
+                total_waiting_time = module.waiting_time
+                for sub_module in module.sub_modules:
+                    total_waiting_time += calculate_total_waiting_time(sub_module)
+                return total_waiting_time
+
+            # calculate waiting time
+            temp_waiting = 0.0
+            for controller in dp.controller:
+                temp_waiting += controller.waiting_time
+                for ph in controller.phases:
+                    for module in ph.modules:
+                        temp_waiting += calculate_total_waiting_time(module)
+            
+            dp.total_waiting_time = temp_waiting
+            dp.total_processing_time = sum([controller.processing_time for controller in dp.controller]) - dp.total_waiting_time
+
+            dp.running = False
+
+            if dp.success:
+                callback(dp)
+            else:
+                if error_callback:
+                    error_callback(dp)
 
         new_callback(dp)
 
@@ -430,8 +443,9 @@ class Pipeline:
         # Put data into DataPackage
         dp = DataPackage(
             pipeline_id=self._id,
-            pipeline_executer_id=instance_id,
-            data=data
+            pipeline_instance_id=instance_id,
+            data=data,
+            start_time=time.time(),
         )
 
         dp.running = True
