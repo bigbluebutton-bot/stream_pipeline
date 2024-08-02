@@ -141,13 +141,13 @@ class OrderTracker:
 
     def pop_finished_data_packages(self, mode: PhaseExecutionMode) -> List[DataPackage]:
         """
-        NOT_PARALLEL or NO_ORDER:
+        NO_ORDER:
             Example:
                 Queue: [1, 2, 5, 6, 7]
                     -> Returns: [1, 2, 5, 6, 7]
                 Queue left: []
 
-        ORDER_BY_SEQUENCE:
+        ORDER_BY_SEQUENCE or NOT_PARALLEL:
             Example:
                 Queue: [1, 2, 5, 6, 7]
                     -> Returns: [1, 2]
@@ -163,12 +163,12 @@ class OrderTracker:
         with self._lock:
             finished_data_packages: List[DataPackage] = []
 
-            if (mode == PhaseExecutionMode.NOT_PARALLEL or mode == PhaseExecutionMode.NO_ORDER):
+            if (mode == PhaseExecutionMode.NO_ORDER):
                 for sequence_number, data_package in self._finished_data_packages.items():
                     finished_data_packages.append(data_package)
                 self._finished_data_packages = {}
                     
-            elif mode == PhaseExecutionMode.ORDER_BY_SEQUENCE:
+            elif mode == PhaseExecutionMode.ORDER_BY_SEQUENCE or mode == PhaseExecutionMode.NOT_PARALLEL:
                 current_sequence = self._last_finished_sequence_number + 1
 
                 while current_sequence in self._finished_data_packages:
