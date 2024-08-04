@@ -4,7 +4,7 @@ import threading
 from typing import Union
 from src.data_package import DataPackageModule
 from src.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
-from src.pipeline import Pipeline, PipelineMode
+from src.pipeline import Pipeline, PhaseExecutionMode, PipelinePhase, PipelinePhaseExecution
 from prometheus_client import start_http_server
 import concurrent.futures
 import time
@@ -31,7 +31,7 @@ class DataTransformationModule(ExecutionModule):
     def __init__(self):
         super().__init__(ModuleOptions(
             use_mutex=False,
-            timeout=4.0
+            timeout=40.0
         ))
 
     def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
@@ -68,24 +68,52 @@ class AlwaysTrue(ExecutionModule):
         dpm.message = "Always true"
 
 # Setting up the processing pipeline
-pre_modules: list[Module] = [
-    ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
-    DataValidationModule()
-    ]
-main_modules: list[Module] = [
-    DataConditionModule(SuccessModule(), FailureModule()),
-    DataTransformationModule(),
-]
-post_modules: list[Module] = [
-    CombinationModule([
-        CombinationModule([
-            AlwaysTrue(),
-        ]),
-    ])
+
+phases = [
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        max_workers=10,
+        name="phase1",
+        phases=[
+            PipelinePhase([
+                DataValidationModule(),
+            ]),
+        ],
+    ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.NOT_PARALLEL,
+        max_workers=10,
+        name="phase2",
+        phases=[
+            PipelinePhase([
+                DataConditionModule(SuccessModule(), FailureModule()),
+                AlwaysTrue(),
+            ]),
+        ],
+    ),
+    PipelinePhaseExecution(
+        mode=PhaseExecutionMode.NO_ORDER,
+        max_workers=10,
+        name="phase3",
+        phases=[
+            PipelinePhase([
+                CombinationModule([
+                    CombinationModule([
+                        DataTransformationModule(),
+                        ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+                    ], ModuleOptions(
+                        use_mutex=False,
+                    )),
+                ], ModuleOptions(
+                        use_mutex=False,
+                    ))
+            ]),
+        ],
+    ),
 ]
 
-
-manager = Pipeline(pre_modules, main_modules, post_modules, "test-pipeline", 10, PipelineMode.ORDER_BY_SEQUENCE)
+pipeline = Pipeline(phases, "test-pipeline")
+pip_ex_id = pipeline.register_instance()
 
 counter = 0
 counter_mutex = threading.Lock()
@@ -102,8 +130,8 @@ def error_callback(processed_data: DataPackage):
         counter = counter + 1
 
 # Function to execute the processing pipeline
-def process_data(data):
-    manager.run(data, callback, error_callback)
+def process_data(data) -> Union[DataPackage, None]:
+    return pipeline.execute(data, pip_ex_id, callback, error_callback)
 
 # Example data
 data_list = [
@@ -118,9 +146,9 @@ data_list = [
     {"key": "value8", "condition": True},
     {"key": "value9", "condition": False},
 ]
-
+dp: Union[DataPackage, None] = None
 for d in data_list:
-    process_data(d)
+    dp = process_data(d)
 
 # # Using ThreadPoolExecutor for multithreading
 # with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -128,6 +156,14 @@ for d in data_list:
 
 # Keep the main thread alive
 while True:
-    time.sleep(1)
+    time.sleep(0.001)
     if counter >= len(data_list):
         break
+
+pipeline.unregister_instance(pip_ex_id)
+
+
+
+print("THE END")
+print(dp)
+# time.sleep(50000)

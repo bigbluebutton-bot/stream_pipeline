@@ -14,7 +14,7 @@ class TestDataPackageModule(unittest.TestCase):
 
     def setUp(self):
         self.module = DataPackageModule(
-            module_id="test_module",
+            id="test_module",
             running=True,
             start_time=1.0,
             end_time=2.0,
@@ -28,7 +28,7 @@ class TestDataPackageModule(unittest.TestCase):
 
     def test_to_grpc(self):
         grpc_module = self.module.to_grpc()
-        self.assertEqual(grpc_module.module_id, self.module.module_id)
+        self.assertEqual(grpc_module.module_id, self.module.id)
         self.assertEqual(grpc_module.running, self.module.running)
         self.assertEqual(grpc_module.start_time, self.module.start_time)
         self.assertEqual(grpc_module.end_time, self.module.end_time)
@@ -49,7 +49,7 @@ class TestDataPackageModule(unittest.TestCase):
             success=True
         )
         self.module.set_from_grpc(grpc_module)
-        self.assertEqual(self.module.module_id, grpc_module.module_id)
+        self.assertEqual(self.module.id, grpc_module.module_id)
         self.assertEqual(self.module.running, grpc_module.running)
         self.assertEqual(self.module.start_time, grpc_module.start_time)
         self.assertEqual(self.module.end_time, grpc_module.end_time)
@@ -64,7 +64,7 @@ class TestDataPackage(unittest.TestCase):
     def setUp(self):
         self.package = DataPackage(
             pipeline_id="pipeline_1",
-            pipeline_executer_id="executor_1",
+            pipeline_instance_id="executor_1",
             sequence_number=1,
             modules=[],
             data={"key": "value"},
@@ -77,7 +77,7 @@ class TestDataPackage(unittest.TestCase):
     def test_to_grpc(self):
         grpc_package = self.package.to_grpc()
         self.assertEqual(grpc_package.pipeline_id, self.package.pipeline_id)
-        self.assertEqual(grpc_package.pipeline_executer_id, self.package.pipeline_executer_id)
+        self.assertEqual(grpc_package.pipeline_executer_id, self.package.pipeline_instance_id)
         self.assertEqual(grpc_package.sequence_number, self.package.sequence_number)
         self.assertEqual(grpc_package.running, self.package.running)
         self.assertEqual(grpc_package.success, self.package.success)
@@ -96,7 +96,7 @@ class TestDataPackage(unittest.TestCase):
         )
         self.package.set_from_grpc(grpc_package)
         self.assertEqual(self.package.pipeline_id, grpc_package.pipeline_id)
-        self.assertEqual(self.package.pipeline_executer_id, grpc_package.pipeline_executer_id)
+        self.assertEqual(self.package.pipeline_instance_id, grpc_package.pipeline_executer_id)
         self.assertEqual(self.package.sequence_number, grpc_package.sequence_number)
         self.assertEqual(self.package.running, grpc_package.running)
         self.assertEqual(self.package.success, grpc_package.success)
@@ -167,7 +167,7 @@ class TestDataPackageModuleConversion(unittest.TestCase):
 
     def setUp(self):
         self.module = DataPackageModule(
-            module_id="test_module",
+            id="test_module",
             running=True,
             start_time=1.0,
             end_time=2.0,
@@ -175,8 +175,8 @@ class TestDataPackageModuleConversion(unittest.TestCase):
             processing_time=0.7,
             total_time=1.2,
             sub_modules=[
-                DataPackageModule(module_id="sub_module_1"),
-                DataPackageModule(module_id="sub_module_2")
+                DataPackageModule(id="sub_module_1"),
+                DataPackageModule(id="sub_module_2")
             ],
             success=True,
             error=None
@@ -187,7 +187,7 @@ class TestDataPackageModuleConversion(unittest.TestCase):
         new_module = DataPackageModule()
         new_module.set_from_grpc(grpc_module)
 
-        self.assertEqual(new_module.module_id, self.module.module_id)
+        self.assertEqual(new_module.id, self.module.id)
         self.assertEqual(new_module.running, self.module.running)
         self.assertEqual(new_module.start_time, self.module.start_time)
         self.assertEqual(new_module.end_time, self.module.end_time)
@@ -197,7 +197,7 @@ class TestDataPackageModuleConversion(unittest.TestCase):
         self.assertEqual(new_module.success, self.module.success)
         self.assertEqual(len(new_module.sub_modules), len(self.module.sub_modules))
         for new_sub, old_sub in zip(new_module.sub_modules, self.module.sub_modules):
-            self.assertEqual(new_sub.module_id, old_sub.module_id)
+            self.assertEqual(new_sub.id, old_sub.id)
         self.assertEqual(new_module.error, self.module.error)
 
 class TestDataPackageConversion(unittest.TestCase):
@@ -205,11 +205,11 @@ class TestDataPackageConversion(unittest.TestCase):
     def setUp(self):
         self.package = DataPackage(
             pipeline_id="pipeline_1",
-            pipeline_executer_id="executor_1",
+            pipeline_instance_id="executor_1",
             sequence_number=1,
             modules=[
-                DataPackageModule(module_id="module_1"),
-                DataPackageModule(module_id="module_2")
+                DataPackageModule(id="module_1"),
+                DataPackageModule(id="module_2")
             ],
             data={"key": "value"},
             running=True,
@@ -226,7 +226,7 @@ class TestDataPackageConversion(unittest.TestCase):
         new_package.set_from_grpc(grpc_package)
 
         self.assertEqual(new_package.pipeline_id, self.package.pipeline_id)
-        self.assertEqual(new_package.pipeline_executer_id, self.package.pipeline_executer_id)
+        self.assertEqual(new_package.pipeline_instance_id, self.package.pipeline_instance_id)
         self.assertEqual(new_package.sequence_number, self.package.sequence_number)
         self.assertEqual(new_package.running, self.package.running)
         self.assertEqual(new_package.success, self.package.success)

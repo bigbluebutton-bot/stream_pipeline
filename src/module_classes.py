@@ -1,5 +1,5 @@
 # module_classes.py
-
+import copy
 from abc import ABC, abstractmethod
 import threading
 from typing import  Any, Dict, List, Tuple, Union, final, NamedTuple
@@ -11,7 +11,7 @@ from prometheus_client import Gauge, Summary
 from . import data_pb2
 from . import data_pb2_grpc
 from .error import Error, exception_to_error
-from .data_package import DataPackage, DataPackageModule
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase
 
 # Metrics to track time spent on processing modules
 MODULE_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
@@ -30,7 +30,7 @@ class ModuleOptions(NamedTuple):
         use_mutex (bool): whether to use a mutex lock for thread safety (Default: True)
         timeout (float): timeout to stop executing after x seconds. If 0.0, waits indefinitely (Default: 0.0)
     """
-    use_mutex: bool = True
+    use_mutex: bool = False
     timeout: float = 0.0
 
 class Module(ABC):
@@ -60,13 +60,13 @@ class Module(ABC):
             self._locks[id(self)] = threading.RLock()
         return self._locks[id(self)]
 
-    def run(self, data_package: DataPackage, parent_module: Union[DataPackageModule, None] = None) -> None:
+    def run(self, data_package: DataPackage, parent_module: Union[DataPackageModule, None] = None, phase: Union[DataPackagePhase, None] = None) -> None:
         """
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
         """
         dpm = DataPackageModule(
-                module_id=self._id,
+                id=self._id,
                 running=True,
                 start_time=0.0,
                 end_time=0.0,
@@ -81,7 +81,10 @@ class Module(ABC):
         if parent_module:
             parent_module.sub_modules.append(dpm)
         else:
-            data_package.modules.append(dpm)
+            if phase:
+                phase.modules.append(dpm)
+            else:
+                raise ValueError("Parent module or phase must be provided.")
         
         start_total_time = time.time()
         waiting_time = 0.0
@@ -165,6 +168,27 @@ class Module(ABC):
         Performs an operation on the data package.
         """
         pass
+
+    def __deepcopy__(self, memo):
+        # Check if the object is already in memo
+        if id(self) in memo:
+            return memo[id(self)]
+        
+        # Create a copy of the object
+        copy_obj = self.__class__.__new__(self.__class__)
+        
+        # Store the copy in memo
+        memo[id(self)] = copy_obj
+        
+        # Deep copy all instance attributes
+        for k, v in self.__dict__.items():
+            setattr(copy_obj, k, copy.deepcopy(v, memo))
+        
+        # Ensure that the _locks attribute is copied correctly
+        if id(self) in self._locks:
+            copy_obj._locks[id(copy_obj)] = threading.RLock()
+        
+        return copy_obj
 
 class ExecutionModule(Module, ABC):
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):

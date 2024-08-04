@@ -20,7 +20,7 @@ message Error {
 
 // DataPackageModule message definition
 message DataPackageModule {
-    string module_id = 1;
+    string id = 1;
     bool running = 2;
     double start_time = 3;
     double end_time = 4;
@@ -33,17 +33,46 @@ message DataPackageModule {
     Error error = 11;
 }
 
+// DataPackagePhase message definition
+message DataPackagePhase {
+    string id = 1;
+    bool running = 2;
+    double start_time = 3;
+    double end_time = 4;
+    double processing_time = 5;
+    repeated DataPackageModule modules = 6;
+}
+
+// DataPackagePhaseController message definition
+message DataPackagePhaseController {
+    string id = 1;
+    string mode = 2;
+    int32 workers = 3;
+    int32 sequence_number = 4;
+    bool running = 5;
+    double start_time = 6;
+    double end_time = 7;
+    double waiting_time = 8;
+    double processing_time = 9;
+    double total_time = 10;
+    repeated DataPackagePhase phases = 11;
+}
+
 // DataPackage message definition
 message DataPackage {
     string id = 1;
     string pipeline_id = 2;
-    string pipeline_executer_id = 3;
-    int32 sequence_number = 4;
-    repeated DataPackageModule modules = 5;
-    bytes data = 6;
-    bool running = 7;
-    bool success = 8;
-    repeated Error errors = 9;
+    string pipeline_instance_id = 3;
+    repeated DataPackagePhaseController controller = 4;
+    bytes data = 5;
+    bool running = 6;
+    double start_time = 7;
+    double end_time = 8;
+    double total_waiting_time = 9;
+    double total_processing_time = 10;
+    double total_time = 11;
+    bool success = 12;
+    repeated Error errors = 13;
 }
 
 message RequestDPandDPM {
@@ -57,21 +86,5 @@ message ReturnDPandError {
 }
 
 service ModuleService {
-  rpc run (RequestDPandDPM) returns (ReturnDPandError);
+    rpc run (RequestDPandDPM) returns (ReturnDPandError);
 }
-
-
-// // ErrorLoggerOptions message definition
-// message ErrorLoggerOptions {
-//     bool exc_type = 1;
-//     bool message = 2;
-//     bool traceback = 3;
-//     bool thread = 4;
-//     bool start_context = 5;
-//     bool thread_id = 6;
-//     bool is_daemon = 7;
-//     bool local_vars = 8;
-//     bool global_vars = 9;
-//     bool environment_vars = 10;
-//     bool module_versions = 11;
-// }
