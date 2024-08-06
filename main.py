@@ -7,12 +7,14 @@ def main() -> None:
     import random
     import threading
     from typing import Union
-    from stream_pipeline.data_package import DataPackageModule, Data
+    from stream_pipeline.data_package import DataPackageModule
     from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
     from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
     from prometheus_client import start_http_server
     import time
     import stream_pipeline.error as error
+    
+    from data import Data
 
     err_logger = error.ErrorLogger()
     err_logger.set_debug(True)
@@ -20,8 +22,6 @@ def main() -> None:
 
     # Start up the server to expose the metrics.
     start_http_server(8000)
-
-
 
 
     # Example custom modules

@@ -3,9 +3,10 @@ def main() -> None:
     import time
     from typing import Union
     from stream_pipeline.grpc_server import GrpcServer
-    from stream_pipeline.data_package import DataPackage, DataPackageModule, Data
+    from stream_pipeline.data_package import DataPackage, DataPackageModule
     from stream_pipeline.module_classes import ExecutionModule, ModuleOptions
 
+    from data import Data
 
     class TestModule(ExecutionModule):
         def __init__(self) -> None:

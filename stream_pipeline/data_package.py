@@ -1,4 +1,3 @@
-import copy
 from dataclasses import dataclass, field
 import pickle
 from typing import Generic, List, Optional, TypeVar, Union
@@ -9,15 +8,6 @@ from .thread_safe_class import ThreadSafeClass
 from .error import Error, exception_to_error
 
 
-# Creating a data type
-class Data:
-    def __init__(self, key: str, condition: bool) -> None:
-        self.key = key
-        self.condition = condition
-        self.status = "unknown"
-        
-    def __str__(self) -> str:
-        return f"Data: {self.key}, {self.condition}, {self.status}"
 
 @dataclass
 class DataPackageModule(ThreadSafeClass):
@@ -678,7 +668,17 @@ class DataPackage(Generic[T], ThreadSafeClass):
         grpc_package.pipeline_id = self.pipeline_id
         grpc_package.pipeline_instance_id = self.pipeline_instance_id
         grpc_package.controller.extend([phase.to_grpc() for phase in self.controller])
-        grpc_package.data = pickle.dumps(self.data)
+        try:
+            grpc_package.data = pickle.dumps(self.data)
+        except Exception as e:
+            if isinstance(e, AttributeError):
+                raise RuntimeError(
+                            "Failed to serialize data. This likely occurred because the Data class is not defined in its own file. "
+                            "When the Data class is defined within the main script, pickle cannot import it properly, leading to a circular import issue. "
+                            "To resolve this, define the Data class in a separate file and import it into your main script."
+                        ) from e           
+            else:
+                raise e
         grpc_package.running = self.running
         grpc_package.start_time = self.start_time
         grpc_package.end_time = self.end_time
