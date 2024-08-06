@@ -12,7 +12,7 @@ class ThreadSafeClass(ABC):
     __immutable_attributes: List[str] = field(default_factory=list, init=False)
 
     @final
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         for attr in self.__dict__:
             if not attr.startswith('__') and not attr.startswith('_ThreadSafeClass'):
                 self.__mutexes[attr] = threading.Lock()
