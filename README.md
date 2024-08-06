@@ -1,6 +1,6 @@
 # Stream Pipeline
 
-![](img/logo.png)
+![](img/small-logo.png)
 
 ## Overview
 `stream_pipeline` is a scalable microservice pipeline designed to handle data streams, for eaxample audio streams. This project aims to provide a robust and flexible framework for processing streaming data through a series of modular and configurable components.
