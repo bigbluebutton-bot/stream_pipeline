@@ -22,7 +22,7 @@ PIPELINE_WAITING_TIME = Summary('pipeline_waiting_time', 'Time spent waiting for
 
 
 
-class PhaseExecutionMode(Enum):
+class ControllerMode(Enum):
     """
     Enum to define different modes of pipeline execution.
     Values:
@@ -36,14 +36,14 @@ class PhaseExecutionMode(Enum):
     FIRST_WINS = 2
     NO_ORDER = 3
 
-def phase_execution_mode_to_str(mode: PhaseExecutionMode) -> str:
-    if mode == PhaseExecutionMode.NOT_PARALLEL:
+def controller_mode_to_str(mode: ControllerMode) -> str:
+    if mode == ControllerMode.NOT_PARALLEL:
         return "NOT_PARALLEL"
-    elif mode == PhaseExecutionMode.ORDER_BY_SEQUENCE:
+    elif mode == ControllerMode.ORDER_BY_SEQUENCE:
         return "ORDER_BY_SEQUENCE"
-    elif mode == PhaseExecutionMode.FIRST_WINS:
+    elif mode == ControllerMode.FIRST_WINS:
         return "FIRST_WINS"
-    elif mode == PhaseExecutionMode.NO_ORDER:
+    elif mode == ControllerMode.NO_ORDER:
         return "NO_ORDER"
     else:
         return "UNKNOWN"
@@ -141,7 +141,7 @@ class OrderTracker:
             else:
                 raise ValueError("Sequence number not found in data packages.")
 
-    def pop_finished_data_packages(self, mode: PhaseExecutionMode) -> List[DataPackage]:
+    def pop_finished_data_packages(self, mode: ControllerMode) -> List[DataPackage]:
         """
         NO_ORDER:
             Example:
@@ -165,12 +165,12 @@ class OrderTracker:
         with self._lock:
             finished_data_packages: List[DataPackage] = []
 
-            if (mode == PhaseExecutionMode.NO_ORDER):
+            if (mode == ControllerMode.NO_ORDER):
                 for sequence_number, data_package in self._finished_data_packages.items():
                     finished_data_packages.append(data_package)
                 self._finished_data_packages = {}
                     
-            elif mode == PhaseExecutionMode.ORDER_BY_SEQUENCE or mode == PhaseExecutionMode.NOT_PARALLEL:
+            elif mode == ControllerMode.ORDER_BY_SEQUENCE or mode == ControllerMode.NOT_PARALLEL:
                 current_sequence = self._last_finished_sequence_number + 1
 
                 while current_sequence in self._finished_data_packages:
@@ -179,7 +179,7 @@ class OrderTracker:
                     self._last_finished_sequence_number = current_sequence
                     current_sequence = current_sequence + 1
 
-            elif mode == PhaseExecutionMode.FIRST_WINS:
+            elif mode == ControllerMode.FIRST_WINS:
                 # find each dp which has a bigger sequence number than the last finished sequence number
                 last_sequence_number = self._last_finished_sequence_number + 1
                 for sequence_number, data_package in self._finished_data_packages.items():
@@ -193,14 +193,14 @@ class OrderTracker:
                 
             return finished_data_packages
 
-class PipelinePhaseExecution:
-    def __init__(self, phases: List[PipelinePhase], name: str = "", max_workers: int = 1, mode: PhaseExecutionMode = PhaseExecutionMode.NOT_PARALLEL) -> None:
+class PipelineController:
+    def __init__(self, phases: List[PipelinePhase], name: str = "", max_workers: int = 1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
         self._id: str = f"PPE-{uuid.uuid4()}"
         self._name: str = name if name else self._id
         self._phases: List[PipelinePhase] = phases
-        self._mode: PhaseExecutionMode = mode
+        self._mode: ControllerMode = mode
 
-        if mode == PhaseExecutionMode.NOT_PARALLEL and max_workers > 1:
+        if mode == ControllerMode.NOT_PARALLEL and max_workers > 1:
             max_workers = 1
 
         self._max_workers = max_workers
@@ -216,7 +216,7 @@ class PipelinePhaseExecution:
         start_time = time.time()
 
         dp_phase_con = DataPackagePhaseController(
-            mode=phase_execution_mode_to_str(self._mode),
+            mode=controller_mode_to_str(self._mode),
             workers=self._max_workers,
             sequence_number=self._order_tracker.get_next_sequence_number(),
             running=True,
@@ -274,21 +274,21 @@ class PipelinePhaseExecution:
 
         eid = f"{self.get_id()}-{dp_phase_con.sequence_number}"
         future = self._executor.submit(execute_phases)
-        if self._mode == PhaseExecutionMode.FIRST_WINS:
+        if self._mode == ControllerMode.FIRST_WINS:
             self._active_futures[eid] = future
         
 
 
         
-    def __deepcopy__(self, memo: Dict) -> 'PipelinePhaseExecution':
-        copied_phase = PipelinePhaseExecution(
+    def __deepcopy__(self, memo: Dict) -> 'PipelineController':
+        copied_controller = PipelineController(
             name=self._name,
             phases=[phase.__deepcopy__(memo) for phase in self._phases],
             mode=self._mode,
             max_workers=self._max_workers,
         )
-        copied_phase._id = self._id
-        return copied_phase
+        copied_controller._id = self._id
+        return copied_controller
     
     def get_id(self) -> str:
         with self._lock:
@@ -302,32 +302,32 @@ class PipelineInstance:
     def __init__(self, name: str = "") -> None:
         self._id: str = f"PI-{uuid.uuid4()}"
         self._name: str = name if name else self._id
-        self._phases_execution_queue: Dict[str, List[PipelinePhaseExecution]] = {}
+        self._controller_queue: Dict[str, List[PipelineController]] = {}
 
         self._lock = threading.Lock()
         self._execution_lock = threading.Lock()
 
-    def execute(self, phases: List[PipelinePhaseExecution], dp: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
+    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
         dp.pipeline_instance_id = self._id
 
-        self._phases_execution_queue[dp.id] = phases.copy()
+        self._controller_queue[dp.id] = controllers.copy()
 
         def new_callback(dp: DataPackage) -> None:
             nonlocal callback, error_callback
             left_phases = []
-            for phase in self._phases_execution_queue[dp.id]:
-                left_phases.append(phase._name)
+            for controller in self._controller_queue[dp.id]:
+                left_phases.append(controller._name)
 
             # print(f"{dp.data} {len(dp.phases)}/{len(phases)}({len(self._phases_execution_queue[dp.id])}) {left_phases}")
 
             if dp.success:
-                if len(self._phases_execution_queue[dp.id]) > 0:
-                    phase = self._phases_execution_queue[dp.id].pop(0)
-                    phase.execute(self._execution_lock, dp, new_callback, error_callback)
+                if len(self._controller_queue[dp.id]) > 0:
+                    controller = self._controller_queue[dp.id].pop(0)
+                    controller.execute(self._execution_lock, dp, new_callback, error_callback)
                     # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
                     return
             
-            del self._phases_execution_queue[dp.id]
+            del self._controller_queue[dp.id]
 
             dp.end_time = time.time()
             dp.total_time = dp.end_time - dp.start_time
@@ -340,14 +340,14 @@ class PipelineInstance:
 
             # calculate waiting time
             temp_waiting = 0.0
-            for controller in dp.controller:
-                temp_waiting += controller.waiting_time
-                for ph in controller.phases:
+            for dp_controller in dp.controller:
+                temp_waiting += dp_controller.waiting_time
+                for ph in dp_controller.phases:
                     for module in ph.modules:
                         temp_waiting += calculate_total_waiting_time(module)
             
             dp.total_waiting_time = temp_waiting
-            dp.total_processing_time = sum([controller.processing_time for controller in dp.controller]) - dp.total_waiting_time
+            dp.total_processing_time = sum([dp_controller.processing_time for dp_controller in dp.controller]) - dp.total_waiting_time
 
             dp.running = False
 
@@ -368,16 +368,16 @@ class PipelineInstance:
             return self._name
 
 class Pipeline:
-    def __init__(self, phases: Union[Sequence[Union[PipelinePhaseExecution, PipelinePhase]], None] = None, name: str = "") -> None:
+    def __init__(self, controllers_or_phases: Union[Sequence[Union[PipelineController, PipelinePhase]], None] = None, name: str = "") -> None:
         self._id: str = f"P-{uuid.uuid4()}"
         self._name: str = name if name else self._id
-        self._phases: List[PipelinePhaseExecution] = []
-        self._instances_phases: Dict[str, List[PipelinePhaseExecution]] = {} # Each instance has its own copy of the phases
+        self._controllers: List[PipelineController] = []
+        self._instances_controllers: Dict[str, List[PipelineController]] = {} # Each instance has its own copy of the controllers
         self._pipeline_instances: Dict[str, PipelineInstance] = {} # Dict of instances
 
         self._lock = threading.Lock()
 
-        self.set_phases(phases)
+        self.set_phases(controllers_or_phases)
 
     def get_id(self) -> str:
         with self._lock:
@@ -387,38 +387,38 @@ class Pipeline:
         with self._lock:
             return self._name
 
-    def set_phases(self, phases: Union[Sequence[Union[PipelinePhaseExecution, PipelinePhase]], None] = None) -> None:
+    def set_phases(self, controllers_or_phases: Union[Sequence[Union[PipelineController, PipelinePhase]], None] = None) -> None:
         """
         This will set the phases for the pipeline and create a deepcopy for each phase and modules.
         """
 
-        if phases:
-            temp_phases = []
-            for phase in phases:
-                if isinstance(phase, PipelinePhase):
-                    phase_list = [phase]
-                    temp_phases.append(PipelinePhaseExecution(phase_list))
+        if controllers_or_phases:
+            temp_controllers = []
+            for c_or_p in controllers_or_phases:
+                if isinstance(c_or_p, PipelinePhase):
+                    phase_list = [c_or_p]
+                    temp_controllers.append(PipelineController(phase_list))
                 else:
-                    temp_phases.append(phase)
+                    temp_controllers.append(c_or_p)
         
             with self._lock:
-                for phase in temp_phases:
-                    self._phases.append(phase.__deepcopy__({}))
+                for c_or_p in temp_controllers:
+                    self._controllers.append(c_or_p.__deepcopy__({}))
 
         # for each instance create a deepcopy of the phases
         with self._lock:
-            for phase in self._phases:
+            for con in self._controllers:
                 order_tracker = OrderTracker()
                 for ex_id in self._pipeline_instances:
-                    copy_phase = phase.__deepcopy__({})
-                    copy_phase.set_order_tracker(order_tracker)
-                    self._instances_phases[ex_id].append(copy_phase)
+                    copy_con = con.__deepcopy__({})
+                    copy_con.set_order_tracker(order_tracker)
+                    self._instances_controllers[ex_id].append(copy_con)
 
     def register_instance(self) -> str:
         ex = PipelineInstance(name=f"")
         with self._lock:
             self._pipeline_instances[ex.get_id()] = ex
-            self._instances_phases[ex.get_id()] = []
+            self._instances_controllers[ex.get_id()] = []
         self.set_phases()
         return ex._id
 
@@ -431,7 +431,7 @@ class Pipeline:
         if ex:
             with self._lock:
                 del self._pipeline_instances[ex_id]
-                del self._instances_phases[ex_id]
+                del self._instances_controllers[ex_id]
 
     def execute(self, data: Any, instance_id: str, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> DataPackage:
         ex = self._get_instance(instance_id)
@@ -440,7 +440,7 @@ class Pipeline:
         
         temp_phases = []
         with self._lock:
-            temp_phases = self._instances_phases.get(instance_id, []).copy()
+            temp_phases = self._instances_controllers.get(instance_id, []).copy()
 
         # Put data into DataPackage
         dp = DataPackage(

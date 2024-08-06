@@ -9,7 +9,7 @@ def main() -> None:
     from typing import Union
     from stream_pipeline.data_package import DataPackageModule
     from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
-    from stream_pipeline.pipeline import Pipeline, PhaseExecutionMode, PipelinePhase, PipelinePhaseExecution
+    from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
     from prometheus_client import start_http_server
     import time
     import stream_pipeline.error as error
@@ -74,8 +74,8 @@ def main() -> None:
     # Setting up the processing pipeline
 
     phases = [
-        PipelinePhaseExecution(
-            mode=PhaseExecutionMode.ORDER_BY_SEQUENCE,
+        PipelineController(
+            mode=ControllerMode.ORDER_BY_SEQUENCE,
             max_workers=10,
             name="phase1",
             phases=[
@@ -84,8 +84,8 @@ def main() -> None:
                 ]),
             ],
         ),
-        PipelinePhaseExecution(
-            mode=PhaseExecutionMode.NOT_PARALLEL,
+        PipelineController(
+            mode=ControllerMode.NOT_PARALLEL,
             max_workers=10,
             name="phase2",
             phases=[
@@ -95,8 +95,8 @@ def main() -> None:
                 ]),
             ],
         ),
-        PipelinePhaseExecution(
-            mode=PhaseExecutionMode.NO_ORDER,
+        PipelineController(
+            mode=ControllerMode.NO_ORDER,
             max_workers=10,
             name="phase3",
             phases=[
