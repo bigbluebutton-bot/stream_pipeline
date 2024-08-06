@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import pickle
-from typing import Any, List, Union
+from typing import Generic, List, Optional, TypeVar, Union
 import uuid
 
 from . import data_pb2
@@ -26,24 +26,116 @@ class DataPackageModule(ThreadSafeClass):
         success (bool):                         Indicates if the processing was successful.
         error (Union[Exception, Error, None]):  Error encountered during processing, if any.
     """
-    id: str = field(default_factory=lambda: "Module-" + str(uuid.uuid4()))
-    running: bool = False
-    start_time: float = 0.0
-    end_time: float = 0.0
-    waiting_time: float = 0.0
-    processing_time: float = 0.0
-    total_time: float = 0.0
-    sub_modules: List['DataPackageModule'] = field(default_factory=list)
-    message: str = ""
-    success: bool = True
-    error: Union[Error, None] = None
+    _id: str = field(default_factory=lambda: "Module-" + str(uuid.uuid4()))
+    _running: bool = False
+    _start_time: float = 0.0
+    _end_time: float = 0.0
+    _waiting_time: float = 0.0
+    _processing_time: float = 0.0
+    _total_time: float = 0.0
+    _sub_modules: List['DataPackageModule'] = field(default_factory=list)
+    _message: str = ""
+    _success: bool = True
+    _error: Optional[Error] = None
+    
+    _ThreadSafeClass__immutable_attributes: List[str] = field(default_factory=lambda: [])
+
+    @property
+    def id(self) -> str:
+        return self._get_attribute('id')
+    
+    @id.setter
+    def id(self, value: str) -> None:
+        self._set_attribute('id', value)
+    
+    @property
+    def running(self) -> bool:
+        return self._get_attribute('running')
+    
+    @running.setter
+    def running(self, value: bool) -> None:
+        self._set_attribute('running', value)
+    
+    @property
+    def start_time(self) -> float:
+        return self._get_attribute('start_time')
+    
+    @start_time.setter
+    def start_time(self, value: float) -> None:
+        self._set_attribute('start_time', value)
+    
+    @property
+    def end_time(self) -> float:
+        return self._get_attribute('end_time')
+    
+    @end_time.setter
+    def end_time(self, value: float) -> None:
+        self._set_attribute('end_time', value)
+    
+    @property
+    def waiting_time(self) -> float:
+        return self._get_attribute('waiting_time')
+    
+    @waiting_time.setter
+    def waiting_time(self, value: float) -> None:
+        self._set_attribute('waiting_time', value)
+    
+    @property
+    def processing_time(self) -> float:
+        return self._get_attribute('processing_time')
+    
+    @processing_time.setter
+    def processing_time(self, value: float) -> None:
+        self._set_attribute('processing_time', value)
+    
+    @property
+    def total_time(self) -> float:
+        return self._get_attribute('total_time')
+    
+    @total_time.setter
+    def total_time(self, value: float) -> None:
+        self._set_attribute('total_time', value)
+    
+    @property
+    def sub_modules(self) -> List['DataPackageModule']:
+        return self._get_attribute('sub_modules')
+    
+    @sub_modules.setter
+    def sub_modules(self, value: List['DataPackageModule']) -> None:
+        self._set_attribute('sub_modules', value)
+    
+    @property
+    def message(self) -> str:
+        return self._get_attribute('message')
+    
+    @message.setter
+    def message(self, value: str) -> None:
+        self._set_attribute('message', value)
+    
+    @property
+    def success(self) -> bool:
+        return self._get_attribute('success')
+    
+    @success.setter
+    def success(self, value: bool) -> None:
+        self._set_attribute('success', value)
+    
+    @property
+    def error(self) -> Optional[Error]:
+        return self._get_attribute('error')
+    
+    @error.setter
+    def error(self, value: Union[Exception, Error, None]) -> None:
+        if isinstance(value, Exception):
+            value = exception_to_error(value)
+        self._set_attribute('error', value)
 
     def set_from_grpc(self, grpc_module: data_pb2.DataPackageModule) -> None:
         """
         Updates the current instance with data from a gRPC module.
         """
-        temp_immutable_attributes = self._immutable_attributes
-        self._immutable_attributes = []
+        temp_immutable_attributes = self._ThreadSafeClass__immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = []
 
         self.id = grpc_module.id
         self.running = grpc_module.running
@@ -72,7 +164,7 @@ class DataPackageModule(ThreadSafeClass):
         else:
             self.error = None
         
-        self._immutable_attributes = temp_immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = temp_immutable_attributes
 
     def to_grpc(self) -> data_pb2.DataPackageModule:
         """
@@ -111,19 +203,70 @@ class DataPackagePhase(ThreadSafeClass):
         processing_time (float):            Time spent processing the data package.
         modules (List[DataPackageModule]):  List of modules that processed the data package.
     """
-    id: str = field(default_factory=lambda: "Phase-" + str(uuid.uuid4()))
-    running: bool = False
-    start_time: float = 0.0
-    end_time: float = 0.0
-    processing_time: float = 0.0
-    modules: List['DataPackageModule'] = field(default_factory=list)
+    _id: str = field(default_factory=lambda: "Phase-" + str(uuid.uuid4()))
+    _running: bool = False
+    _start_time: float = 0.0
+    _end_time: float = 0.0
+    _processing_time: float = 0.0
+    _modules: List['DataPackageModule'] = field(default_factory=list)
+
+    # Immutable attributes
+    _ThreadSafeClass__immutable_attributes: List[str] = field(default_factory=lambda: ['id'])
+    
+    @property
+    def id(self) -> str:
+        return self._get_attribute('id')
+    
+    @id.setter
+    def id(self, value: str) -> None:
+        self._set_attribute('id', value)
+    
+    @property
+    def running(self) -> bool:
+        return self._get_attribute('running')
+    
+    @running.setter
+    def running(self, value: bool) -> None:
+        self._set_attribute('running', value)
+    
+    @property
+    def start_time(self) -> float:
+        return self._get_attribute('start_time')
+    
+    @start_time.setter
+    def start_time(self, value: float) -> None:
+        self._set_attribute('start_time', value)
+    
+    @property
+    def end_time(self) -> float:
+        return self._get_attribute('end_time')
+    
+    @end_time.setter
+    def end_time(self, value: float) -> None:
+        self._set_attribute('end_time', value)
+    
+    @property
+    def processing_time(self) -> float:
+        return self._get_attribute('processing_time')
+    
+    @processing_time.setter
+    def processing_time(self, value: float) -> None:
+        self._set_attribute('processing_time', value)
+    
+    @property
+    def modules(self) -> List['DataPackageModule']:
+        return self._get_attribute('modules')
+    
+    @modules.setter
+    def modules(self, value: List['DataPackageModule']) -> None:
+        self._set_attribute('modules', value)
 
     def set_from_grpc(self, grpc_phase: data_pb2.DataPackagePhase) -> None:
         """
         Updates the current instance with data from a gRPC phase.
         """
-        temp_immutable_attributes = self._immutable_attributes
-        self._immutable_attributes = []
+        temp_immutable_attributes = self._ThreadSafeClass__immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = []
 
         self.id = grpc_phase.id
         self.running = grpc_phase.running
@@ -141,7 +284,7 @@ class DataPackagePhase(ThreadSafeClass):
                     new_module.set_from_grpc(module)
                     self.modules.append(new_module)
 
-        self._immutable_attributes = temp_immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = temp_immutable_attributes
 
     def to_grpc(self) -> data_pb2.DataPackagePhase:
         """
@@ -175,24 +318,114 @@ class DataPackagePhaseController(ThreadSafeClass):
         total_time (float):                 Total time spent on phase execution.
         phases (List[DataPackagePhase]):    List of phases that processed the data package.
     """
-    id: str = field(default_factory=lambda: "Controller-" + str(uuid.uuid4()))
-    mode: str = "NOT_PARALLEL"
-    workers: int = 1
-    sequence_number: int = -1
-    running: bool = False
-    start_time: float = 0.0
-    end_time: float = 0.0
-    waiting_time: float = 0.0
-    processing_time: float = 0.0
-    total_time: float = 0.0
-    phases: List[DataPackagePhase] = field(default_factory=list)
+    _id: str = field(default_factory=lambda: "Controller-" + str(uuid.uuid4()))
+    _mode: str = "NOT_PARALLEL"
+    _workers: int = 1
+    _sequence_number: int = -1
+    _running: bool = False
+    _start_time: float = 0.0
+    _end_time: float = 0.0
+    _waiting_time: float = 0.0
+    _processing_time: float = 0.0
+    _total_time: float = 0.0
+    _phases: List[DataPackagePhase] = field(default_factory=list)
+    
+    _ThreadSafeClass__immutable_attributes: List[str] = field(default_factory=lambda: ['id'])
+
+    @property
+    def id(self) -> str:
+        return self._get_attribute('id')
+    
+    @id.setter
+    def id(self, value: str) -> None:
+        self._set_attribute('id', value)
+    
+    @property
+    def mode(self) -> str:
+        return self._get_attribute('mode')
+    
+    @mode.setter
+    def mode(self, value: str) -> None:
+        self._set_attribute('mode', value)
+    
+    @property
+    def workers(self) -> int:
+        return self._get_attribute('workers')
+    
+    @workers.setter
+    def workers(self, value: int) -> None:
+        self._set_attribute('workers', value)
+    
+    @property
+    def sequence_number(self) -> int:
+        return self._get_attribute('sequence_number')
+    
+    @sequence_number.setter
+    def sequence_number(self, value: int) -> None:
+        self._set_attribute('sequence_number', value)
+    
+    @property
+    def running(self) -> bool:
+        return self._get_attribute('running')
+    
+    @running.setter
+    def running(self, value: bool) -> None:
+        self._set_attribute('running', value)
+    
+    @property
+    def start_time(self) -> float:
+        return self._get_attribute('start_time')
+    
+    @start_time.setter
+    def start_time(self, value: float) -> None:
+        self._set_attribute('start_time', value)
+    
+    @property
+    def end_time(self) -> float:
+        return self._get_attribute('end_time')
+    
+    @end_time.setter
+    def end_time(self, value: float) -> None:
+        self._set_attribute('end_time', value)
+    
+    @property
+    def waiting_time(self) -> float:
+        return self._get_attribute('waiting_time')
+    
+    @waiting_time.setter
+    def waiting_time(self, value: float) -> None:
+        self._set_attribute('waiting_time', value)
+    
+    @property
+    def processing_time(self) -> float:
+        return self._get_attribute('processing_time')
+    
+    @processing_time.setter
+    def processing_time(self, value: float) -> None:
+        self._set_attribute('processing_time', value)
+    
+    @property
+    def total_time(self) -> float:
+        return self._get_attribute('total_time')
+    
+    @total_time.setter
+    def total_time(self, value: float) -> None:
+        self._set_attribute('total_time', value)
+    
+    @property
+    def phases(self) -> List[DataPackagePhase]:
+        return self._get_attribute('phases')
+    
+    @phases.setter
+    def phases(self, value: List[DataPackagePhase]) -> None:
+        self._set_attribute('phases', value)
 
     def set_from_grpc(self, grpc_execution: data_pb2.DataPackagePhaseController) -> None:
         """
         Updates the current instance with data from a gRPC phase execution.
         """
-        temp_immutable_attributes = self._immutable_attributes
-        self._immutable_attributes = []
+        temp_immutable_attributes = self._ThreadSafeClass__immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = []
 
         self.id = grpc_execution.id
         self.mode = grpc_execution.mode
@@ -215,7 +448,7 @@ class DataPackagePhaseController(ThreadSafeClass):
                     new_phase.set_from_grpc(phase)
                     self.phases.append(new_phase)
 
-        self._immutable_attributes = temp_immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = temp_immutable_attributes
 
     def to_grpc(self) -> data_pb2.DataPackagePhaseController:
         """
@@ -235,9 +468,10 @@ class DataPackagePhaseController(ThreadSafeClass):
         grpc_execution.phases.extend([phase.to_grpc() for phase in self.phases])
         return grpc_execution
 
+T = TypeVar('T')
 
 @dataclass
-class DataPackage(ThreadSafeClass):
+class DataPackage(Generic[T], ThreadSafeClass):
     """
     Represents the data and metadata for a pipeline process, passed through the pipeline and between modules.
     
@@ -246,7 +480,7 @@ class DataPackage(ThreadSafeClass):
         pipeline_id (str):                              ID of the pipeline handling this package.
         pipeline_instance_id (str):                     ID of the pipeline instance handling this package.
         controller (List[DataPackagePhaseController]):  List of phases processed in the mode of execution.
-        data (Any):                                     Actual data contained in the package.
+        data (Optional[T]):                             Actual data contained in the package.
         running (bool):                                 Indicates if the data package is currently being processed.
         start_time (float):                             Timestamp when the data package started processing.
         end_time (float):                               Timestamp when the data package finished processing.
@@ -254,31 +488,140 @@ class DataPackage(ThreadSafeClass):
         total_processing_time (float):                  Total time spent processing the data package.
         total_time (float):                             Total time spent processing the data package.
         success (bool):                                 Indicates if the process was successful.
-        errors (List[Union[Error, Exception, None]]):   List of errors that occurred during processing.
+        errors (List[Optional[Error]]):                 List of errors that occurred during processing.
     """
-    id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
-    pipeline_id: str = ""
-    pipeline_instance_id: str = ""
-    controller: List[DataPackagePhaseController] = field(default_factory=list)
-    data: Any = None
-    running: bool = False
-    start_time: float = 0.0
-    end_time: float = 0.0
-    total_waiting_time: float = 0.0
-    total_processing_time: float = 0.0
-    total_time: float = 0.0
-    success: bool = True
-    errors: List[Union[Error, None]] = field(default_factory=list)
+    _id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
+    _pipeline_id: str = ""
+    _pipeline_instance_id: str = ""
+    _controller: List[DataPackagePhaseController] = field(default_factory=list)
+    _data: Optional[T] = None
+    _running: bool = False
+    _start_time: float = 0.0
+    _end_time: float = 0.0
+    _total_waiting_time: float = 0.0
+    _total_processing_time: float = 0.0
+    _total_time: float = 0.0
+    _success: bool = True
+    _errors: List[Optional[Error]] = field(default_factory=list)
 
     # Immutable attributes
-    _immutable_attributes: List[str] = field(default_factory=lambda: ['id', 'pipeline_id'])
+    _ThreadSafeClass__immutable_attributes: List[str] = field(default_factory=lambda: ['id'])
+    
+    @property
+    def id(self) -> str:
+        return self._get_attribute('id')
+    
+    @id.setter
+    def id(self, value: str) -> None:
+        self._set_attribute('id', value)
+    
+    @property
+    def pipeline_id(self) -> str:
+        return self._get_attribute('pipeline_id')
+    
+    @pipeline_id.setter
+    def pipeline_id(self, value: str) -> None:
+        self._set_attribute('pipeline_id', value)
+    
+    @property
+    def pipeline_instance_id(self) -> str:
+        return self._get_attribute('pipeline_instance_id')
+    
+    @pipeline_instance_id.setter
+    def pipeline_instance_id(self, value: str) -> None:
+        self._set_attribute('pipeline_instance_id', value)
+    
+    @property
+    def controller(self) -> List[DataPackagePhaseController]:
+        return self._get_attribute('controller')
+    
+    @controller.setter
+    def controller(self, value: List[DataPackagePhaseController]) -> None:
+        self._set_attribute('controller', value)
+    
+    @property
+    def data(self) -> Optional[T]:
+        return self._get_attribute('data')
+    
+    @data.setter
+    def data(self, value: Optional[T]) -> None:
+        self._set_attribute('data', value)
+    
+    @property
+    def running(self) -> bool:
+        return self._get_attribute('running')
+    
+    @running.setter
+    def running(self, value: bool) -> None:
+        self._set_attribute('running', value)
+    
+    @property
+    def start_time(self) -> float:
+        return self._get_attribute('start_time')
+    
+    @start_time.setter
+    def start_time(self, value: float) -> None:
+        self._set_attribute('start_time', value)
+    
+    @property
+    def end_time(self) -> float:
+        return self._get_attribute('end_time')
+    
+    @end_time.setter
+    def end_time(self, value: float) -> None:
+        self._set_attribute('end_time', value)
+    
+    @property
+    def total_waiting_time(self) -> float:
+        return self._get_attribute('total_waiting_time')
+    
+    @total_waiting_time.setter
+    def total_waiting_time(self, value: float) -> None:
+        self._set_attribute('total_waiting_time', value)
+    
+    @property
+    def total_processing_time(self) -> float:
+        return self._get_attribute('total_processing_time')
+    
+    @total_processing_time.setter
+    def total_processing_time(self, value: float) -> None:
+        self._set_attribute('total_processing_time', value)
+    
+    @property
+    def total_time(self) -> float:
+        return self._get_attribute('total_time')
+    
+    @total_time.setter
+    def total_time(self, value: float) -> None:
+        self._set_attribute('total_time', value)
+    
+    @property
+    def success(self) -> bool:
+        return self._get_attribute('success')
+    
+    @success.setter
+    def success(self, value: bool) -> None:
+        self._set_attribute('success', value)
+    
+    @property
+    def errors(self) -> List[Optional[Error]]:
+        return self._get_attribute('errors')
+    
+    @errors.setter
+    def errors(self, value: List[Union[Exception, Error, None]]) -> None:
+        new_list = []
+        for error in value:
+            if isinstance(error, Exception):
+                error = exception_to_error(error)
+            new_list.append(error)
+        self._set_attribute('errors', new_list)
 
     def set_from_grpc(self, grpc_package: data_pb2.DataPackage) -> None:
         """
         Updates the current instance with data from a gRPC data package.
         """
-        temp_immutable_attributes = self._immutable_attributes
-        self._immutable_attributes = []
+        temp_immutable_attributes = self._ThreadSafeClass__immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = []
 
         self.id = grpc_package.id
         self.pipeline_id = grpc_package.pipeline_id
@@ -313,7 +656,7 @@ class DataPackage(ThreadSafeClass):
                     new_error.set_from_grpc(error)
                     self.errors.append(new_error)
 
-        self._immutable_attributes = temp_immutable_attributes
+        self._ThreadSafeClass__immutable_attributes = temp_immutable_attributes
 
     def to_grpc(self) -> data_pb2.DataPackage:
         """

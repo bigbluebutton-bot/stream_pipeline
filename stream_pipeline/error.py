@@ -29,36 +29,134 @@ class RemoteException(Exception):
         super().__init__(self.message)
 
     def to_error(self) -> 'Error':
-        return Error(
-            id=self.id,
-            type=self.type,
-            message=self.message,
-            traceback=self.traceback,
-            thread=self.thread,
-            start_context=self.start_context,
-            thread_id=self.thread_id,
-            is_daemon=self.is_daemon,
-            local_vars=self.local_vars,
-            global_vars=self.global_vars,
-            environment_vars=self.environment_vars,
-            module_versions=self.module_versions
-        )
+        err = Error()
+        err.id=self.id
+        err.type=self.type
+        err.message=self.message
+        err.traceback=self.traceback
+        err.thread=self.thread
+        err.start_context=self.start_context
+        err.thread_id=self.thread_id
+        err.is_daemon=self.is_daemon
+        err.local_vars=self.local_vars
+        err.global_vars=self.global_vars
+        err.environment_vars=self.environment_vars
+        err.module_versions=self.module_versions
+        return err
 
 
 @dataclass
 class Error (ThreadSafeClass, Exception):
-    id: str = field(default_factory=lambda: "Error-" + str(uuid.uuid4()))
-    type: str = ""
-    message: str = ""
-    traceback: List[str] = field(default_factory=list)
-    thread: Union[str, None] = None
-    start_context: Union[str, None] = None
-    thread_id: Union[int, None] = None
-    is_daemon: Union[bool, None] = None
-    local_vars: Dict[str, str] = field(default_factory=dict)
-    global_vars: Dict[str, str] = field(default_factory=dict)
-    environment_vars: Dict[str, str] = field(default_factory=dict)
-    module_versions: Dict[str, str] = field(default_factory=dict)
+    _id: str = field(default_factory=lambda: "Error-" + str(uuid.uuid4()))
+    _type: str = ""
+    _message: str = ""
+    _traceback: List[str] = field(default_factory=list)
+    _thread: Union[str, None] = None
+    _start_context: Union[str, None] = None
+    _thread_id: Union[int, None] = None
+    _is_daemon: Union[bool, None] = None
+    _local_vars: Dict[str, str] = field(default_factory=dict)
+    _global_vars: Dict[str, str] = field(default_factory=dict)
+    _environment_vars: Dict[str, str] = field(default_factory=dict)
+    _module_versions: Dict[str, str] = field(default_factory=dict)
+    
+    _ThreadSafeClass__immutable_attributes: List[str] = field(default_factory=lambda: [])
+
+    @property
+    def id(self) -> str:
+        return self._get_attribute('id')
+
+    @id.setter
+    def id(self, value: str) -> None:
+        self._set_attribute('id', value)
+
+    @property
+    def type(self) -> str:
+        return self._get_attribute('type')
+
+    @type.setter
+    def type(self, value: str) -> None:
+        self._set_attribute('type', value)
+
+    @property
+    def message(self) -> str:
+        return self._get_attribute('message')
+
+    @message.setter
+    def message(self, value: str) -> None:
+        self._set_attribute('message', value)
+
+    @property
+    def traceback(self) -> List[str]:
+        return self._get_attribute('traceback')
+
+    @traceback.setter
+    def traceback(self, value: List[str]) -> None:
+        self._set_attribute('traceback', value)
+
+    @property
+    def thread(self) -> Union[str, None]:
+        return self._get_attribute('thread')
+
+    @thread.setter
+    def thread(self, value: Union[str, None]) -> None:
+        self._set_attribute('thread', value)
+
+    @property
+    def start_context(self) -> Union[str, None]:
+        return self._get_attribute('start_context')
+
+    @start_context.setter
+    def start_context(self, value: Union[str, None]) -> None:
+        self._set_attribute('start_context', value)
+
+    @property
+    def thread_id(self) -> Union[int, None]:
+        return self._get_attribute('thread_id')
+
+    @thread_id.setter
+    def thread_id(self, value: Union[int, None]) -> None:
+        self._set_attribute('thread_id', value)
+
+    @property
+    def is_daemon(self) -> Union[bool, None]:
+        return self._get_attribute('is_daemon')
+
+    @is_daemon.setter
+    def is_daemon(self, value: Union[bool, None]) -> None:
+        self._set_attribute('is_daemon', value)
+
+    @property
+    def local_vars(self) -> Dict[str, str]:
+        return self._get_attribute('local_vars')
+
+    @local_vars.setter
+    def local_vars(self, value: Dict[str, str]) -> None:
+        self._set_attribute('local_vars', value)
+
+    @property
+    def global_vars(self) -> Dict[str, str]:
+        return self._get_attribute('global_vars')
+
+    @global_vars.setter
+    def global_vars(self, value: Dict[str, str]) -> None:
+        self._set_attribute('global_vars', value)
+
+    @property
+    def environment_vars(self) -> Dict[str, str]:
+        return self._get_attribute('environment_vars')
+
+    @environment_vars.setter
+    def environment_vars(self, value: Dict[str, str]) -> None:
+        self._set_attribute('environment_vars', value)
+
+    @property
+    def module_versions(self) -> Dict[str, str]:
+        return self._get_attribute('module_versions')
+
+    @module_versions.setter
+    def module_versions(self, value: Dict[str, str]) -> None:
+        self._set_attribute('module_versions', value)
 
     def __str__(self) -> str:
         return json_error_handler_str(self)
@@ -189,19 +287,18 @@ def exception_to_error(exc: Union[BaseException, Error, None]) -> Union[Error, N
     current_thread = threading.current_thread()
     start_context = getattr(current_thread, 'start_context', 'N/A')
 
-    error = Error(
-        type=exc_type.__name__,
-        message=str(exc_value),
-        traceback=formatted_traceback,
-        thread=current_thread.name,
-        start_context=start_context,
-        thread_id=current_thread.ident,
-        is_daemon=current_thread.daemon,
-        local_vars=local_vars,
-        global_vars=global_vars,
-        environment_vars={key: os.environ[key] for key in os.environ},
-        module_versions={module: sys.modules[module].__version__ if hasattr(sys.modules[module], '__version__') else 'N/A' for module in sys.modules},
-    )
+    error = Error()
+    error.type=exc_type.__name__
+    error.message=str(exc_value)
+    error.traceback=formatted_traceback
+    error.thread=current_thread.name
+    error.start_context=start_context
+    error.thread_id=current_thread.ident
+    error.is_daemon=current_thread.daemon
+    error.local_vars=local_vars
+    error.global_vars=global_vars
+    error.environment_vars={key: os.environ[key] for key in os.environ}
+    error.module_versions={module: sys.modules[module].__version__ if hasattr(sys.modules[module], '__version__') else 'N/A' for module in sys.modules}
 
     return error
 

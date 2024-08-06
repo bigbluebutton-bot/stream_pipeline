@@ -6,6 +6,16 @@ def main() -> None:
     from stream_pipeline.data_package import DataPackage, DataPackageModule
     from stream_pipeline.module_classes import ExecutionModule, ModuleOptions
 
+    # Creating a data type
+    class Data:
+        def __init__(self, key: str, condition: bool) -> None:
+            self.key = key
+            self.condition = condition
+            self.status = "unknown"
+            
+        def __str__(self) -> str:
+            return f"Data: {self.key}, {self.condition}"
+
 
     class TestModule(ExecutionModule):
         def __init__(self) -> None:
@@ -14,12 +24,12 @@ def main() -> None:
                 timeout=4.0
             ))
 
-        def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
+        def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
             list1 = [1, 2, 3]
             randomint = random.choice(list1)
             time.sleep(randomint)
-            if "key" in data.data:
-                data.data["key"] = data.data["key"].upper() + " transformed"
+            if dp.data:
+                dp.data.key = dp.data.key.upper() + " transformed"
                 dpm.success = True
                 dpm.message = "Transformation succeeded"
             else:
@@ -28,7 +38,7 @@ def main() -> None:
 
     # Example usage
     module = TestModule()
-    server = GrpcServer(module, 50051)
+    server = GrpcServer[Data](module, 50051)
     server.start()
     server.wait_for_termination()
 

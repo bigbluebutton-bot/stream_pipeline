@@ -1,6 +1,6 @@
 # main.py
 
-from typing import Any
+from typing import List
 
 
 def main() -> None:
@@ -21,15 +21,25 @@ def main() -> None:
     # Start up the server to expose the metrics.
     start_http_server(8000)
 
+    # Creating a data type
+    class Data:
+        def __init__(self, key: str, condition: bool) -> None:
+            self.key = key
+            self.condition = condition
+            self.status = "unknown"
+            
+        def __str__(self) -> str:
+            return f"Data: {self.key}, {self.condition}"
+
+
     # Example custom modules
     class DataValidationModule(ExecutionModule):
-        def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
-            if isinstance(data.data, dict) and "key" in data.data:
-                data.success = True
+        def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
+            if dp.data and dp.data.key:
+                dp.success = True
                 dpm.message = "Validation succeeded"
             else:
-                data.success = False
-                dpm.message = "Validation failed: key missing"
+                raise ValueError("Validation failed: key missing")
 
     class DataTransformationModule(ExecutionModule):
         def __init__(self) -> None:
@@ -38,41 +48,45 @@ def main() -> None:
                 timeout=40.0
             ))
 
-        def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
+        def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
             list1 = [1, 2, 3, 4, 5, 6]
             randomint = random.choice(list1)
             time.sleep(randomint)
-            if "key" in data.data:
-                data.data["key"] = data.data["key"].upper()
-                data.success = True
-                dpm.message = "Transformation succeeded"
-            else:
-                data.success = False
-                dpm.message = "Transformation failed: key missing"
+            if dp.data:
+                if dp.data.key:
+                    dp.data.key = dp.data.key.upper()
+                    dp.success = True
+                    dpm.message = "Transformation succeeded"
+                else:
+                    dp.success = False
+                    dpm.message = "Transformation failed: key missing"
 
     class DataConditionModule(ConditionModule):
-        def condition(self, data: DataPackage) -> bool:
-            return "condition" in data.data and data.data["condition"] == True
+        def condition(self, dp: DataPackage[Data]) -> bool:
+            if dp.data:
+                return dp.data.condition == True
+            return False
 
     class SuccessModule(ExecutionModule):
-        def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
-            data.data["status"] = "success"
-            data.success = True
-            dpm.message = "Condition true: success"
+        def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
+            if dp.data:
+                dp.data.status = "success"
+                dp.success = True
+                dpm.message = "Condition true: success"
 
     class FailureModule(ExecutionModule):
-        def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
-            data.data["status"] = "failure"
-            data.success = True
-            dpm.message = "Condition false: failure"
+        def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
+            if dp.data:
+                dp.data.status = "failure"
+                dp.success = True
+                dpm.message = "Condition false: failure"
 
     class AlwaysTrue(ExecutionModule):
-        def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
-            data.success = True
+        def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
+            dp.success = True
             dpm.message = "Always true"
 
     # Setting up the processing pipeline
-
     phases = [
         PipelineController(
             mode=ControllerMode.ORDER_BY_SEQUENCE,
@@ -104,7 +118,7 @@ def main() -> None:
                     CombinationModule([
                         CombinationModule([
                             DataTransformationModule(),
-                            ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+                            # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
                         ], ModuleOptions(
                             use_mutex=False,
                         )),
@@ -116,39 +130,39 @@ def main() -> None:
         ),
     ]
 
-    pipeline = Pipeline(phases, "test-pipeline")
+    pipeline = Pipeline[Data](phases, "test-pipeline")
     pip_ex_id = pipeline.register_instance()
 
     counter = 0
     counter_mutex = threading.Lock()
-    def callback(processed_data: DataPackage) -> None:
+    def callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
-        print(f"OK: {processed_data.data}")
+        print(f"OK: {dp.data}")
         with counter_mutex:
             counter = counter + 1
 
-    def error_callback(processed_data: DataPackage) -> None:
+    def error_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
-        print(f"ERROR: {processed_data}")
+        print(f"ERROR: {dp}")
         with counter_mutex:
             counter = counter + 1
 
     # Function to execute the processing pipeline
-    def process_data(data: Any) -> Union[DataPackage, None]:
+    def process_data(data: Data) -> Union[DataPackage, None]:
         return pipeline.execute(data, pip_ex_id, callback, error_callback)
 
     # Example data
-    data_list = [
-        {"key": "value0", "condition": True},
-        {"key": "value1", "condition": False},
-        {"key": "value2", "condition": True},
-        {"key": "value3", "condition": False},
-        {"key": "value4", "condition": True},
-        {"key": "value5", "condition": False},
-        {"key": "value6", "condition": True},
-        {"key": "value7", "condition": False},
-        {"key": "value8", "condition": True},
-        {"key": "value9", "condition": False},
+    data_list: List[Data] = [
+        Data(key="value0", condition=True),
+        Data(key="value1", condition=False),
+        Data(key="value2", condition=True),
+        Data(key="value3", condition=False),
+        Data(key="value4", condition=True),
+        Data(key="value5", condition=False),
+        Data(key="value6", condition=True),
+        Data(key="value7", condition=False),
+        Data(key="value8", condition=True),
+        Data(key="value9", condition=False),
     ]
     dp: Union[DataPackage, None] = None
     for d in data_list:

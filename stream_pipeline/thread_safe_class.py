@@ -1,73 +1,66 @@
+from abc import ABC
 import json
-import types
 import threading
 import copy
-from typing import Any, Dict, List
+from typing import Any, Dict, List, final
 from dataclasses import dataclass, field
 
 @dataclass
-class ThreadSafeClass:
-    _mutex: threading.Lock = threading.Lock()  # For locking all properties that start with '_'
-    _mutexes: Dict[str, threading.Lock] = field(default_factory=dict, init=False)
-    _immutable_attributes: List[str] = field(default_factory=list)
+class ThreadSafeClass(ABC):
+    __mutex: threading.Lock = field(default_factory=threading.Lock, init=False)  # For locking all properties that start with '_'
+    __mutexes: Dict[str, threading.Lock] = field(default_factory=dict, init=False)
+    __immutable_attributes: List[str] = field(default_factory=list, init=False)
 
-    def __getattribute__(self, name: str) -> Any:
-        if name == '_mutex':
-            return super().__getattribute__(name)
+    @final
+    def __post_init__(self):
+        for attr in self.__dict__:
+            if not attr.startswith('__') and not attr.startswith('_ThreadSafeClass'):
+                self.__mutexes[attr] = threading.Lock()
 
-        if name.startswith('_'):
-            with self._mutex:
-                return super().__getattribute__(name)
-        attr = super().__getattribute__(name)
-        if isinstance(attr, types.MethodType):
-            return attr
-
-        if '_mutexes' in self.__dict__:
-            if name not in self._mutexes:
-                self._mutexes[name] = threading.Lock()
-
-            with self._mutexes[name]:
-                return super().__getattribute__(name)
+    def _get_attribute(self, name: str) -> Any:
+        new_name = "_" + name
+        if name.startswith('__'):
+            with self.__mutex:
+                return self.__dict__[new_name]
         else:
-            return super().__getattribute__(name)
+            if name not in self.__mutexes:
+                self.__mutexes[name] = threading.Lock()
+            
+            with self.__mutexes[name]:
+                return self.__dict__[new_name]
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        if '_immutable_attributes' in self.__dict__:
-            for attr in self._immutable_attributes:
-                if name == attr and attr in self.__dict__:
-                    raise AttributeError(f"'{self.__class__.__name__}' object attribute '{attr}' is immutable")
-
-        if name.startswith('_'):
-            with self._mutex:
-                super().__setattr__(name, value)
-                return
-
-        if '_mutexes' in self.__dict__:
-            if name not in self._mutexes:
-                self._mutexes[name] = threading.Lock()
-            with self._mutexes[name]:
+    def _set_attribute(self, name: str, value: Any) -> None:
+        new_name = "_" + name
+        if name in self.__immutable_attributes and new_name in self.__dict__:
+            raise AttributeError(f"'{self.__class__.__name__}' object attribute '{name}' is immutable")
+        
+        if name.startswith('__'):
+            with self.__mutex:
+                self.__dict__[new_name] = value
+        else:
+            if name not in self.__mutexes:
+                self.__mutexes[name] = threading.Lock()
+            
+            with self.__mutexes[name]:
                 current_thread = threading.current_thread()
                 if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
                     raise RuntimeError("Modification not allowed: the thread handling this DataPackage has timed out.")
-                super().__setattr__(name, value)
-        else:
-            super().__setattr__(name, value)
+                
+                self.__dict__[new_name] = value
 
     def __deepcopy__(self, memo: Dict[int, Any]) -> Any:
+        # TODO: Block acces to data, when deepcopy is called
         cls = self.__class__
         result = cls.__new__(cls)
         memo[id(self)] = result
 
         for k, v in self.__dict__.items():
-            if k != '_mutexes':
+            if not k.startswith('_ThreadSafeClass') or k == '_ThreadSafeClass__immutable_attributes':
                 setattr(result, k, copy.deepcopy(v, memo))
 
-        result._mutexes = {k: threading.Lock() for k in self.__dict__.keys() if k != '_mutexes'}
+        result.__mutexes = {k: threading.Lock() for k in self.__dict__.keys() if not k.startswith('__')}
         return result
 
-    def copy(self) -> Any:
-        return copy.deepcopy(self)
-    
     def to_dict(self) -> Dict[str, Any]:
         def process_dict(data: Any) -> Any:
             if isinstance(data, dict):
@@ -78,20 +71,22 @@ class ThreadSafeClass:
                 from .error import json_error_handler_dict
                 return json_error_handler_dict(data)
             elif hasattr(data, 'to_dict'):
+                print(getattr(data, 'to_dict'))
                 return data.to_dict()
             else:
                 return data
-        
+
         result = {}
         for key, value in self.__dict__.items():
-            if key.startswith('_'):
+            if key.endswith('__immutable_attributes') or key.startswith('_ThreadSafeClass') or key == '__orig_class__':
                 continue
-            result[key] = process_dict(value)
+            if key.startswith('_'):
+                key = key[1:]
+                result[key] = process_dict(value)
         return result
 
     def __str__(self) -> str:
         data_dict = self.to_dict()
-        # Handle non-serializable data
         try:
             jsonstring = json.dumps(data_dict, default=str, indent=4)
         except (TypeError, ValueError):
