@@ -15,12 +15,14 @@ mypy
 ```bash
 pip3 install -r requirements.txt
 ```
-3. Example: Create two files called [`main.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/main.py) and [`server_external_module.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/server_external_module.py) in the root of your project and add this example from this repository to the files.
+3. Example: Create three files called `main.py`, `server_external_module.py` and `data.py` in the root of your project and add this example from this repository to the files.
 - [`main.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/main.py)
 - [`server_external_module.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/server_external_module.py)
+- [`data.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/data.py)
 ```bash
 wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/server_external_module.py
 wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/main.py
+wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/data.py
 ```
 4. Open two terminals and run the following commands to start the pipeline:
 ```bash
