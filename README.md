@@ -364,9 +364,23 @@ flowchart TD
 ```
 
 # Dev
+## Install dependencies to work
+```
+pip3 install -r requirements.txt
+pip3 install grpcio-tools mypy-protobuf mypy
+```
+
+## Check for type errors
+```
+pip3 install mypy
+mypy --check-untyped-defs --disallow-untyped-defs main.py
+mypy --check-untyped-defs --disallow-untyped-defs server_external_module.py
+```
+
 ## After changing something in proto file
 Generate proto files:
 ```
+pip3 install grpcio-tools mypy-protobuf mypy
 cd stream_pipeline && python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=. data.proto && cd ..
 ```
 There will be an import error:
@@ -391,11 +405,5 @@ error:
 }
 ```
 Fix: Change `import data_pb2 as data__pb2` to `from . import data_pb2 as data__pb2` in `stream_pipeline/data_pb2_grpc.py:6`
-
-Check for type errors in your code:
-```
-mypy --check-untyped-defs --disallow-untyped-defs main.py
-mypy --check-untyped-defs --disallow-untyped-defs server_external_module.py
-```
 
 
