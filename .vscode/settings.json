@@ -9,6 +9,6 @@
     "python.testing.pytestEnabled": false,
     "python.testing.unittestEnabled": true,
     "python.analysis.extraPaths": [
-        "./src"
+        "./stream_pipeline"
     ]
 }
