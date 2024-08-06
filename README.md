@@ -362,3 +362,40 @@ flowchart TD
         PipelineF -->|Request| ExternalModuleD
     end
 ```
+
+# Dev
+## After changing something in proto file
+Generate proto files:
+```
+cd stream_pipeline && python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. --mypy_out=. --mypy_grpc_out=. data.proto && cd ..
+```
+There will be an import error:
+error:
+```json
+{
+    "message": "No module named 'data_pb2'",
+    "id": "Error-e22a2f0e-bde3-4ae4-ac34-d77388b17a9e",
+    "type": "ModuleNotFoundError",
+    "traceback": [
+        "Traceback (most recent call last):",
+        "/home/user/stream_pipeline/main.py:171",
+        "/home/user/stream_pipeline/main.py:11",
+        "/home/user/stream_pipeline/stream_pipeline/module_classes.py:12",
+        "/home/user/stream_pipeline/stream_pipeline/data_pb2_grpc.py:6",
+        "ModuleNotFoundError: No module named 'data_pb2'"
+    ],
+    "thread": "MainThread",
+    "start_context": "N/A",
+    "thread_id": 140072941379584,
+    "is_daemon": false
+}
+```
+Fix: Change `import data_pb2 as data__pb2` to `from . import data_pb2 as data__pb2` in `stream_pipeline/data_pb2_grpc.py:6`
+
+Check for type errors in your code:
+```
+mypy --check-untyped-defs --disallow-untyped-defs main.py
+mypy --check-untyped-defs --disallow-untyped-defs server_external_module.py
+```
+
+
