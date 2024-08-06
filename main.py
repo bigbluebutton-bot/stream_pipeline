@@ -7,7 +7,7 @@ def main() -> None:
     import random
     import threading
     from typing import Union
-    from stream_pipeline.data_package import DataPackageModule
+    from stream_pipeline.data_package import DataPackageModule, Data
     from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
     from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
     from prometheus_client import start_http_server
@@ -21,15 +21,7 @@ def main() -> None:
     # Start up the server to expose the metrics.
     start_http_server(8000)
 
-    # Creating a data type
-    class Data:
-        def __init__(self, key: str, condition: bool) -> None:
-            self.key = key
-            self.condition = condition
-            self.status = "unknown"
-            
-        def __str__(self) -> str:
-            return f"Data: {self.key}, {self.condition}"
+
 
 
     # Example custom modules
@@ -110,7 +102,7 @@ def main() -> None:
             ],
         ),
         PipelineController(
-            mode=ControllerMode.NO_ORDER,
+            mode=ControllerMode.ORDER_BY_SEQUENCE,
             max_workers=10,
             name="phase3",
             phases=[
@@ -118,7 +110,7 @@ def main() -> None:
                     CombinationModule([
                         CombinationModule([
                             DataTransformationModule(),
-                            # ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
+                            ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
                         ], ModuleOptions(
                             use_mutex=False,
                         )),

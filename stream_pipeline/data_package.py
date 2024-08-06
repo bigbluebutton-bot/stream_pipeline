@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass, field
 import pickle
 from typing import Generic, List, Optional, TypeVar, Union
@@ -7,6 +8,16 @@ from . import data_pb2
 from .thread_safe_class import ThreadSafeClass
 from .error import Error, exception_to_error
 
+
+# Creating a data type
+class Data:
+    def __init__(self, key: str, condition: bool) -> None:
+        self.key = key
+        self.condition = condition
+        self.status = "unknown"
+        
+    def __str__(self) -> str:
+        return f"Data: {self.key}, {self.condition}, {self.status}"
 
 @dataclass
 class DataPackageModule(ThreadSafeClass):

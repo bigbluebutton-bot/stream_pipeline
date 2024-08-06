@@ -71,7 +71,6 @@ class ThreadSafeClass(ABC):
                 from .error import json_error_handler_dict
                 return json_error_handler_dict(data)
             elif hasattr(data, 'to_dict'):
-                print(getattr(data, 'to_dict'))
                 return data.to_dict()
             else:
                 return data
