@@ -1,4 +1,32 @@
-# Pipeline
+# Stream Pipeline
+
+![](img/logo.png)
+
+## Overview
+`stream_pipeline` is a scalable microservice pipeline designed to handle data streams, for eaxample audio streams. This project aims to provide a robust and flexible framework for processing streaming data through a series of modular and configurable components.
+
+## Architecture
+The architecture of `stream_pipeline` is built around a series of controllers and phases, each comprising multiple modules that process the data sequentially or in parallel, depending on the configuration. Below is a high-level description of the architecture:
+
+### Controllers
+Controllers manage the flow of data through the pipeline. Each controller can operate in different modes:
+- **NOT_PARALLEL**: Processes data sequentially through phases.
+- **NO_ORDER**: Processes data in parallel without any specific order.
+- **ORDER_BY_SEQUENCE**: Processes data in parallel but maintains a sequence order.
+- **FIRST_WINS**: Processes data in parallel and prioritizes the first completed process.
+
+### Phases
+Each controller consists of multiple phases. A phase represents a stage in the data processing pipeline. Within each phase, data passes through several modules.
+
+### Modules
+Modules are the building blocks of the pipeline. They perform specific tasks on the data stream. There are several default types of modules you can use to create your own modules:
+- **ExecutionModule**: Executes code to modify or process the data.
+- **ConditionModule**: Evaluates conditions and routes the data based on the result.
+- **CombinationModule**: Combines multiple modules into one.
+- **ExternalModule**: Moves the execution of an module to an external server.
+
+# Detailed Architecture Description
+## Pipeline
 ```mermaid
 stateDiagram-v2
     [*] --> Pipeline: Start
@@ -191,74 +219,68 @@ stateDiagram-v2
 
 ```
 
-# Modules
-## ExecutionModule
+## Modules
+### ExecutionModule
+Executes code to modify or process the data.
+
 ```mermaid
 stateDiagram-v2
     [*] --> ExecutionModule
-
     state ExecutionModule {
         [*] --> ExecuteCode
         ExecuteCode --> [*]
     }
-
     ExecutionModule --> [*]
 ```
 
-## ConditionModule
+### ConditionModule
+Evaluates conditions and routes the data based on the result.
+
 ```mermaid
 stateDiagram-v2
     [*] --> ConditionModule
-
-
     state ConditionModule {
         state if_state <<choice>>
         [*] --> ConditionCode
         ConditionCode --> if_state
         if_state --> TrueModule: If condition is true
         if_state --> FalseModule : If condition is false
-
         TrueModule --> [*]
         FalseModule --> [*]
     }
-
     ConditionModule --> [*]
 ```
 
-## CombinationModule
+### CombinationModule
+Combines multiple modules into one.
+
 ```mermaid
 stateDiagram-v2
     [*] --> CombinationModule
-
     state CombinationModule {
         [*] --> Module0: Start Processing
-
         state Module0 {
             [*] --> ExecuteCode0
             ExecuteCode0 --> [*]
         }
-
         Module0 --> Module1
-
         state Module1 {
             [*] --> ExecuteCode1
             ExecuteCode1 --> [*]
         }
-
         Module1 --> Module...n
-
         state Module...n {
             [*] --> ExecuteCode...n
             ExecuteCode...n --> [*]
         }
-
         Module...n --> [*]
     }
-
     CombinationModule --> [*]
 ```
 
-## ExternalModule
+### ExternalModule
+Moves the execution of a module to an external server.
+
 ```mermaid
 stateDiagram-v2
     state Server0 {
@@ -271,26 +293,23 @@ stateDiagram-v2
             }
         }
     }
-
     state Server1 {
-
         Receiver --> Module
-
         Module --> Sender
     }
-
     StartExternalModule --> Receiver
     Sender --> EndExternalModule
 ```
 
-# Scaling the Pipline
-## Look Aside Loadbalancer
+# Future Plans
+
+## Scaling the Pipeline
+The pipeline is designed to be scalable, allowing for the distribution of data processing tasks across multiple instances or nodes. This is managed by a Lookaside Load Balancer, which distributes incoming requests to different pipelines based on the current load and availability.
+
+### Lookaside Load Balancer
+The load balancer ensures efficient distribution and management of pipelines and modules, providing a scalable solution to handle varying loads of data streams.
 
 ```mermaid
----
-title: Pipeline Loadbalancing
----
-
 flowchart TD
     subgraph Clients
         direction RL
@@ -304,7 +323,6 @@ flowchart TD
         ClientH[Client H]
         ClientI[Client I]
     end
-
     ClientA -->|Request| PipelineA
     ClientB -->|Request| PipelineA
     ClientC -->|Request| PipelineB
@@ -315,25 +333,16 @@ flowchart TD
     ClientH -->|Request| PipelineE
     ClientI -->|Request| PipelineF
 
-
-
     subgraph LoadBalancer
         direction LR
         LLBM[Lookaside Load Balancer Module]
         LLBP[Lookaside Load Balancer Pipeline]
     end
 
-
-
-
     Clients --> | Request a Pipeline | LLBP
     LLBM --> |Manage Pipelines| Pipelines
-
     Pipelines --> | Sends Status | LoadBalancer
     Modules -->|Sends Status| LLBM
-
-
-
 
     subgraph Modules
         direction RL
