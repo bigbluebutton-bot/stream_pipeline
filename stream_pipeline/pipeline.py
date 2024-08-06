@@ -6,7 +6,7 @@ import time
 from stream_pipeline.error import exception_to_error
 from .module_classes import Module
 import threading
-from typing import Any, Callable, Dict, List, Sequence, Union
+from typing import Callable, Dict, Generic, List, Sequence, TypeVar, Union
 from enum import Enum
 import uuid
 from prometheus_client import Gauge, Summary
@@ -60,10 +60,10 @@ class PipelinePhase:
         start_time = time.time()
 
         with self._lock:
-            dp_phase = DataPackagePhase(
-                running=True,
-                start_time=start_time,
-            )
+            dp_phase = DataPackagePhase()
+            dp_phase.running=True
+            dp_phase.start_time=start_time
+            
         data_package_controller.phases.append(dp_phase)
 
         for module in self._modules:
@@ -215,13 +215,12 @@ class PipelineController:
     def execute(self, instance_lock: threading.Lock, data_package: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
         start_time = time.time()
 
-        dp_phase_con = DataPackagePhaseController(
-            mode=controller_mode_to_str(self._mode),
-            workers=self._max_workers,
-            sequence_number=self._order_tracker.get_next_sequence_number(),
-            running=True,
-            start_time=start_time,
-        )
+        dp_phase_con = DataPackagePhaseController()
+        dp_phase_con.mode=controller_mode_to_str(self._mode)
+        dp_phase_con.workers=self._max_workers
+        dp_phase_con.sequence_number=self._order_tracker.get_next_sequence_number()
+        dp_phase_con.running=True
+        dp_phase_con.start_time=start_time
 
         # print(f"Starting {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
         data_package.controller.append(dp_phase_con)
@@ -367,7 +366,9 @@ class PipelineInstance:
         with self._lock:
             return self._name
 
-class Pipeline:
+T = TypeVar('T')
+
+class Pipeline(Generic[T]):
     def __init__(self, controllers_or_phases: Union[Sequence[Union[PipelineController, PipelinePhase]], None] = None, name: str = "") -> None:
         self._id: str = f"P-{uuid.uuid4()}"
         self._name: str = name if name else self._id
@@ -433,7 +434,7 @@ class Pipeline:
                 del self._pipeline_instances[ex_id]
                 del self._instances_controllers[ex_id]
 
-    def execute(self, data: Any, instance_id: str, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> DataPackage:
+    def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], error_callback: Union[Callable[[DataPackage[T]], None], None] = None) -> DataPackage:
         ex = self._get_instance(instance_id)
         if not ex:
             raise ValueError("Instance ID not found")
@@ -443,12 +444,11 @@ class Pipeline:
             temp_phases = self._instances_controllers.get(instance_id, []).copy()
 
         # Put data into DataPackage
-        dp = DataPackage(
-            pipeline_id=self._id,
-            pipeline_instance_id=instance_id,
-            data=data,
-            start_time=time.time(),
-        )
+        dp = DataPackage[T]()
+        dp.pipeline_id=self._id
+        dp.pipeline_instance_id=instance_id
+        dp.data=data
+        dp.start_time=time.time()
 
         dp.running = True
         ex.execute(temp_phases, dp, callback, error_callback)

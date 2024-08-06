@@ -1,7 +1,7 @@
 from concurrent import futures
 import grpc # type: ignore
 import time
-from typing import Any, Tuple, Union
+from typing import Any, Generic, Tuple, TypeVar, Union
 
 from .error import exception_to_error
 
@@ -9,56 +9,10 @@ from .module_classes import Module, DataPackage, DataPackageModule
 from .data_pb2 import ReturnDPandError, RequestDPandDPM # type: ignore
 from .data_pb2_grpc import ModuleServiceServicer as ModuleServiceServicerBase, add_ModuleServiceServicer_to_server # type: ignore
 
-# Function to convert gRPC message to normal objects
-def grpc_to_normal(request_grpc: RequestDPandDPM) -> Tuple[DataPackage, Union[None, DataPackageModule]]:
-    dp = DataPackage()
-    dp.set_from_grpc(request_grpc.data_package)
-    dpm = DataPackageModule()
-    dpm.set_from_grpc(request_grpc.data_package_module)
-
-    def find_module(data_package_module: DataPackageModule) -> Union[None, DataPackageModule]:
-        for sm in data_package_module.sub_modules:
-            if sm.id == dpm.id:
-                return sm
-            found_module = find_module(sm)
-            if found_module:
-                return found_module
-        return None
-
-    def find_and_set_module(dp: DataPackage, dpm: DataPackageModule) -> DataPackageModule:
-        for phase_controller in dp.controller:
-            for phase in phase_controller.phases:
-                for module in phase.modules:
-                    if module.id == dpm.id:
-                        return module
-                    found_module = find_module(module)
-                    if found_module:
-                        return found_module
-        return dpm
-
-    dpm = find_and_set_module(dp, dpm)
-    return dp, dpm
-
-# Function to convert normal objects to gRPC messages
-def normal_to_grpc(request: Union[DataPackage, None], error: Union[None, Exception] = None) -> ReturnDPandError:
-    error_grpc: Union[None, Any] = None
-    if error:
-        error = exception_to_error(error)
-        if error:
-            error_grpc = error.to_grpc()
-    
-
-    request_grpc = request.to_grpc() if request else None
-
-    return_dp_and_error = ReturnDPandError()
-    if request_grpc:
-        return_dp_and_error.data_package.CopyFrom(request_grpc)
-    if error_grpc:
-        return_dp_and_error.error.CopyFrom(error_grpc)
-    return return_dp_and_error
+T = TypeVar('T')
 
 # ModuleServiceServicer implementation
-class ModuleServiceServicer(ModuleServiceServicerBase):
+class ModuleServiceServicer(Generic[T], ModuleServiceServicerBase):
     def __init__(self, module: Module):
         self.module = module
 
@@ -66,31 +20,79 @@ class ModuleServiceServicer(ModuleServiceServicerBase):
         data_package: Union[None, DataPackage] = None
         try:
             # Convert gRPC request to normal objects
-            data_package, data_package_module = grpc_to_normal(request_grpc)
+            data_package, data_package_module = self.grpc_to_normal(request_grpc)
             
             # Run the module with data_package and data_package_module
             self.module.run(data_package, data_package_module)
             
             # Convert the result back to gRPC response
-            return_dp_and_error = normal_to_grpc(data_package)
+            return_dp_and_error = self.normal_to_grpc(data_package)
             return return_dp_and_error
         except Exception as e:
             # In case of any exception, convert it to a gRPC response
             try:
-                return_dp_and_error = normal_to_grpc(data_package, e)
+                return_dp_and_error = self.normal_to_grpc(data_package, e)
                 return return_dp_and_error
             except Exception as nested_exception:
                 return_dp_and_error = ReturnDPandError()
                 return_dp_and_error.error.CopyFrom(exception_to_error(nested_exception).to_grpc()) # type: ignore
                 return return_dp_and_error
+            
+    # Function to convert gRPC message to normal objects
+    def grpc_to_normal(self, request_grpc: RequestDPandDPM) -> Tuple[DataPackage[T], Union[None, DataPackageModule]]:
+        dp = DataPackage[T]()
+        dp.set_from_grpc(request_grpc.data_package)
+        dpm = DataPackageModule()
+        dpm.set_from_grpc(request_grpc.data_package_module)
+
+        def find_module(data_package_module: DataPackageModule) -> Union[None, DataPackageModule]:
+            for sm in data_package_module.sub_modules:
+                if sm.id == dpm.id:
+                    return sm
+                found_module = find_module(sm)
+                if found_module:
+                    return found_module
+            return None
+
+        def find_and_set_module(dp: DataPackage[T], dpm: DataPackageModule) -> DataPackageModule:
+            for phase_controller in dp.controller:
+                for phase in phase_controller.phases:
+                    for module in phase.modules:
+                        if module.id == dpm.id:
+                            return module
+                        found_module = find_module(module)
+                        if found_module:
+                            return found_module
+            return dpm
+
+        dpm = find_and_set_module(dp, dpm)
+        return dp, dpm
+
+    # Function to convert normal objects to gRPC messages
+    def normal_to_grpc(self, request: Union[DataPackage[T], None], error: Union[None, Exception] = None) -> ReturnDPandError:
+        error_grpc: Union[None, Any] = None
+        if error:
+            error = exception_to_error(error)
+            if error:
+                error_grpc = error.to_grpc()
+        
+
+        request_grpc = request.to_grpc() if request else None
+
+        return_dp_and_error = ReturnDPandError()
+        if request_grpc:
+            return_dp_and_error.data_package.CopyFrom(request_grpc)
+        if error_grpc:
+            return_dp_and_error.error.CopyFrom(error_grpc)
+        return return_dp_and_error
 
 # gRPC server class
-class GrpcServer:
+class GrpcServer(Generic[T]):
     def __init__(self, module: Module, port: int):
         self.module = module
         self.port = port
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-        add_ModuleServiceServicer_to_server(ModuleServiceServicer(self.module), self.server)
+        add_ModuleServiceServicer_to_server(ModuleServiceServicer[T](self.module), self.server)
         self.server.add_insecure_port(f'[::]:{self.port}')
     
     def start(self) -> None:

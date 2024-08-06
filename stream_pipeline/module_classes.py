@@ -65,17 +65,16 @@ class Module(ABC):
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
         """
-        dpm = DataPackageModule(
-                id=self._id,
-                running=True,
-                start_time=0.0,
-                end_time=0.0,
-                waiting_time=0.0,
-                processing_time=0.0,
-                total_time=0.0,
-                success=True,
-                error=None,
-            )
+        dpm = DataPackageModule()
+        dpm.id=self._id
+        dpm.running=True
+        dpm.start_time=0.0
+        dpm.end_time=0.0
+        dpm.waiting_time=0.0
+        dpm.processing_time=0.0
+        dpm.total_time=0.0
+        dpm.success=True
+        dpm.error=None
         
         # Add the module to the parent module if it exists
         if parent_module:
