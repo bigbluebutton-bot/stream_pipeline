@@ -45,14 +45,14 @@ class Module(ABC):
         self._use_mutex = options.use_mutex
         self._timeout = options.timeout if options.timeout > 0.0 else None
 
-    def get_id(self):
+    def get_id(self) -> str:
         return self._id
     
-    def get_name(self):
+    def get_name(self) -> str:
         return self._name
 
     @property
-    def _mutex(self):
+    def _mutex(self) -> threading.RLock:
         """
         Provides a reentrant lock for each module instance.
         """
@@ -169,7 +169,7 @@ class Module(ABC):
         """
         pass
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: Dict[int, Any]) -> Any:
         # Check if the object is already in memo
         if id(self) in memo:
             return memo[id(self)]
@@ -215,7 +215,7 @@ class ConditionModule(Module, ABC):
         self.false_module = false_module
 
     @abstractmethod
-    def condition(self, data) -> bool:
+    def condition(self, data: DataPackage) -> bool:
         """
         Abstract method to be implemented by subclasses to evaluate conditions based on data input.
         """

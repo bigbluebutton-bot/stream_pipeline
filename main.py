@@ -1,6 +1,9 @@
 # main.py
 
-def main():
+from typing import Any
+
+
+def main() -> None:
     import random
     import threading
     from typing import Union
@@ -29,7 +32,7 @@ def main():
                 dpm.message = "Validation failed: key missing"
 
     class DataTransformationModule(ExecutionModule):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(ModuleOptions(
                 use_mutex=False,
                 timeout=40.0
@@ -118,20 +121,20 @@ def main():
 
     counter = 0
     counter_mutex = threading.Lock()
-    def callback(processed_data: DataPackage):
+    def callback(processed_data: DataPackage) -> None:
         nonlocal counter, counter_mutex
         print(f"OK: {processed_data.data}")
         with counter_mutex:
             counter = counter + 1
 
-    def error_callback(processed_data: DataPackage):
+    def error_callback(processed_data: DataPackage) -> None:
         nonlocal counter, counter_mutex
         print(f"ERROR: {processed_data}")
         with counter_mutex:
             counter = counter + 1
 
     # Function to execute the processing pipeline
-    def process_data(data) -> Union[DataPackage, None]:
+    def process_data(data: Any) -> Union[DataPackage, None]:
         return pipeline.execute(data, pip_ex_id, callback, error_callback)
 
     # Example data

@@ -2,6 +2,8 @@
 
 from concurrent.futures import Future, ThreadPoolExecutor
 import time
+
+from stream_pipeline.error import exception_to_error
 from .module_classes import Module
 import threading
 from typing import Any, Callable, Dict, List, Sequence, Union
@@ -247,7 +249,7 @@ class PipelinePhaseExecution:
 
             except Exception as e:
                 data_package.success = False
-                data_package.errors.append(e)
+                data_package.errors.append(exception_to_error(e))
 
 
             dp_phase_con.end_time = time.time()

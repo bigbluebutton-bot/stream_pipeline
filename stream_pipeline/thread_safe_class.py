@@ -31,7 +31,7 @@ class ThreadSafeClass:
         else:
             return super().__getattribute__(name)
 
-    def __setattr__(self, name: str, value: Any):
+    def __setattr__(self, name: str, value: Any) -> None:
         if '_immutable_attributes' in self.__dict__:
             for attr in self._immutable_attributes:
                 if name == attr and attr in self.__dict__:
@@ -53,7 +53,7 @@ class ThreadSafeClass:
         else:
             super().__setattr__(name, value)
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: Dict[int, Any]) -> Any:
         cls = self.__class__
         result = cls.__new__(cls)
         memo[id(self)] = result
@@ -65,11 +65,11 @@ class ThreadSafeClass:
         result._mutexes = {k: threading.Lock() for k in self.__dict__.keys() if k != '_mutexes'}
         return result
 
-    def copy(self):
+    def copy(self) -> Any:
         return copy.deepcopy(self)
     
-    def to_dict(self):
-        def process_dict(data):
+    def to_dict(self) -> Dict[str, Any]:
+        def process_dict(data: Any) -> Any:
             if isinstance(data, dict):
                 return {k: process_dict(v) for k, v in data.items()}
             elif isinstance(data, (list, tuple, set)):
@@ -89,7 +89,7 @@ class ThreadSafeClass:
             result[key] = process_dict(value)
         return result
 
-    def __str__(self):
+    def __str__(self) -> str:
         data_dict = self.to_dict()
         # Handle non-serializable data
         try:

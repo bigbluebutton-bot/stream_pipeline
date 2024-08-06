@@ -93,15 +93,15 @@ class GrpcServer:
         add_ModuleServiceServicer_to_server(ModuleServiceServicer(self.module), self.server)
         self.server.add_insecure_port(f'[::]:{self.port}')
     
-    def start(self):
+    def start(self) -> None:
         self.server.start()
         print(f"Server started on port {self.port}.")
     
-    def stop(self):
+    def stop(self) -> None:
         self.server.stop(0)
         print(f"Server on port {self.port} stopped.")
 
-    def wait_for_termination(self):
+    def wait_for_termination(self) -> None:
         try:
             while True:
                 time.sleep(86400)

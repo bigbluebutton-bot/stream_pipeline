@@ -36,9 +36,9 @@ class DataPackageModule(ThreadSafeClass):
     sub_modules: List['DataPackageModule'] = field(default_factory=list)
     message: str = ""
     success: bool = True
-    error: Union[Exception, Error, None] = None
+    error: Union[Error, None] = None
 
-    def set_from_grpc(self, grpc_module):
+    def set_from_grpc(self, grpc_module: data_pb2.DataPackageModule) -> None:
         """
         Updates the current instance with data from a gRPC module.
         """
@@ -74,7 +74,7 @@ class DataPackageModule(ThreadSafeClass):
         
         self._immutable_attributes = temp_immutable_attributes
 
-    def to_grpc(self):
+    def to_grpc(self) -> data_pb2.DataPackageModule:
         """
         Converts the current instance to a gRPC module.
         """
@@ -118,7 +118,7 @@ class DataPackagePhase(ThreadSafeClass):
     processing_time: float = 0.0
     modules: List['DataPackageModule'] = field(default_factory=list)
 
-    def set_from_grpc(self, grpc_phase):
+    def set_from_grpc(self, grpc_phase: data_pb2.DataPackagePhase) -> None:
         """
         Updates the current instance with data from a gRPC phase.
         """
@@ -143,7 +143,7 @@ class DataPackagePhase(ThreadSafeClass):
 
         self._immutable_attributes = temp_immutable_attributes
 
-    def to_grpc(self):
+    def to_grpc(self) -> data_pb2.DataPackagePhase:
         """
         Converts the current instance to a gRPC phase.
         """
@@ -187,7 +187,7 @@ class DataPackagePhaseController(ThreadSafeClass):
     total_time: float = 0.0
     phases: List[DataPackagePhase] = field(default_factory=list)
 
-    def set_from_grpc(self, grpc_execution):
+    def set_from_grpc(self, grpc_execution: data_pb2.DataPackagePhaseController) -> None:
         """
         Updates the current instance with data from a gRPC phase execution.
         """
@@ -217,7 +217,7 @@ class DataPackagePhaseController(ThreadSafeClass):
 
         self._immutable_attributes = temp_immutable_attributes
 
-    def to_grpc(self):
+    def to_grpc(self) -> data_pb2.DataPackagePhaseController:
         """
         Converts the current instance to a gRPC phase execution.
         """
@@ -268,12 +268,12 @@ class DataPackage(ThreadSafeClass):
     total_processing_time: float = 0.0
     total_time: float = 0.0
     success: bool = True
-    errors: List[Union[Error, Exception, None]] = field(default_factory=list)
+    errors: List[Union[Error, None]] = field(default_factory=list)
 
     # Immutable attributes
     _immutable_attributes: List[str] = field(default_factory=lambda: ['id', 'pipeline_id'])
 
-    def set_from_grpc(self, grpc_package):
+    def set_from_grpc(self, grpc_package: data_pb2.DataPackage) -> None:
         """
         Updates the current instance with data from a gRPC data package.
         """
@@ -303,7 +303,7 @@ class DataPackage(ThreadSafeClass):
         self.total_time = grpc_package.total_time
         self.success = grpc_package.success
 
-        existing_errors = {error.id: error for error in self.errors}
+        existing_errors = {error.id: error for error in self.errors if error}
         for error in grpc_package.errors:
             if error:
                 if error.id in existing_errors:
@@ -315,7 +315,7 @@ class DataPackage(ThreadSafeClass):
 
         self._immutable_attributes = temp_immutable_attributes
 
-    def to_grpc(self):
+    def to_grpc(self) -> data_pb2.DataPackage:
         """
         Converts the current instance to a gRPC data package.
         """
@@ -332,5 +332,5 @@ class DataPackage(ThreadSafeClass):
         grpc_package.total_processing_time = self.total_processing_time
         grpc_package.total_time = self.total_time
         grpc_package.success = self.success
-        grpc_package.errors.extend([error.to_grpc() for error in self.errors])
+        grpc_package.errors.extend([error.to_grpc() for error in self.errors if error])
         return grpc_package

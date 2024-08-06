@@ -66,7 +66,7 @@ class Error (ThreadSafeClass, Exception):
     def to_remote_exception(self) -> RemoteException:
         return RemoteException(self)
 
-    def set_from_grpc(self, grpc_error):
+    def set_from_grpc(self, grpc_error: data_pb2.Error) -> None:
         self.id = grpc_error.id
         self.type = grpc_error.type
         self.message = grpc_error.message
@@ -80,7 +80,7 @@ class Error (ThreadSafeClass, Exception):
         self.environment_vars = dict(grpc_error.environment_vars)  # Convert map fields to dict
         self.module_versions = dict(grpc_error.module_versions)  # Convert map fields to dict
 
-    def to_grpc(self):
+    def to_grpc(self) -> data_pb2.Error:
         grpc_error = data_pb2.Error()
         grpc_error.id = self.id
         grpc_error.type = self.type
@@ -121,7 +121,7 @@ class ErrorLogger:
     _instance = None # type: ignore
     _lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls) -> 'ErrorLogger':
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:

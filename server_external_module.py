@@ -1,4 +1,4 @@
-def main():
+def main() -> None:
     import random
     import time
     from typing import Union
@@ -8,7 +8,7 @@ def main():
 
 
     class TestModule(ExecutionModule):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(ModuleOptions(
                 use_mutex=False,
                 timeout=4.0
