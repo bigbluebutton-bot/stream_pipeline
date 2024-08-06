@@ -5,6 +5,32 @@
 ## Overview
 `stream_pipeline` is a scalable microservice pipeline designed to handle data streams, for eaxample audio streams. This project aims to provide a robust and flexible framework for processing streaming data through a series of modular and configurable components.
 
+## How to use this package
+1. Create a new file called requirements.txt in the root of your project and add the following line:
+```
+git+https://github.com/JulianKropp/stream_pipeline
+mypy
+```
+2. Install the package by running the following command:
+```bash
+pip3 install -r requirements.txt
+```
+3. Example: Create two files called [`main.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/main.py) and [`server_external_module.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/server_external_module.py) in the root of your project and add this example from this repository to the files.
+- [`main.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/main.py)
+- [`server_external_module.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/server_external_module.py)
+```bash
+wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/server_external_module.py
+wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/main.py
+```
+4. Open two terminals and run the following commands to start the pipeline:
+```bash
+python3 server_external_module.py
+```
+```bash
+python3 main.py
+```
+
+
 ## Architecture
 The architecture of `stream_pipeline` is built around a series of controllers and phases, each comprising multiple modules that process the data sequentially or in parallel, depending on the configuration. Below is a high-level description of the architecture:
 
