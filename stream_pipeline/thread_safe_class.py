@@ -61,7 +61,7 @@ class ThreadSafeClass(ABC):
         result.__mutexes = {k: threading.Lock() for k in self.__dict__.keys() if not k.startswith('__')}
         return result
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, truncate_long_data: int = 0) -> Dict[str, Any]:
         def process_dict(data: Any) -> Any:
             if isinstance(data, dict):
                 return {k: process_dict(v) for k, v in data.items()}
@@ -71,9 +71,15 @@ class ThreadSafeClass(ABC):
                 from .error import json_error_handler_dict
                 return json_error_handler_dict(data)
             elif hasattr(data, 'to_dict'):
-                return data.to_dict()
+                return data.to_dict(truncate_long_data)
             else:
-                return data
+                if truncate_long_data > 0:
+                    value_str = str(data)
+                    if len(value_str) > truncate_long_data:
+                        return value_str[:truncate_long_data] + '...'
+                    return value_str
+                else:
+                    return data
 
         result = {}
         for key, value in self.__dict__.items():
@@ -85,7 +91,7 @@ class ThreadSafeClass(ABC):
         return result
 
     def __str__(self) -> str:
-        data_dict = self.to_dict()
+        data_dict = self.to_dict(1024)
         try:
             jsonstring = json.dumps(data_dict, default=str, indent=4)
         except (TypeError, ValueError):
