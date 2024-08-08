@@ -6,7 +6,7 @@ import time
 from stream_pipeline.error import exception_to_error
 from .module_classes import Module
 import threading
-from typing import Callable, Dict, Generic, List, Sequence, TypeVar, Union
+from typing import Callable, Dict, Generic, List, Optional, Sequence, TypeVar, Union
 from enum import Enum
 import uuid
 from prometheus_client import Gauge, Summary
@@ -212,7 +212,7 @@ class PipelineController:
 
         self._lock = threading.Lock()
 
-    def execute(self, instance_lock: threading.Lock, data_package: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
+    def execute(self, instance_lock: threading.Lock, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
         start_time = time.time()
 
         dp_phase_con = DataPackagePhaseController()
@@ -262,6 +262,9 @@ class PipelineController:
                 for finished_data_package in finished_data_packages:
                     if finished_data_package.success:
                         callback(finished_data_package)
+                    elif len(finished_data_package.errors) == 0:
+                        if exit_callback:
+                            exit_callback(finished_data_package)
                     else:
                         if error_callback:
                             error_callback(finished_data_package)
@@ -306,13 +309,13 @@ class PipelineInstance:
         self._lock = threading.Lock()
         self._execution_lock = threading.Lock()
 
-    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
+    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
         dp.pipeline_instance_id = self._id
 
         self._controller_queue[dp.id] = controllers.copy()
 
         def new_callback(dp: DataPackage) -> None:
-            nonlocal callback, error_callback
+            nonlocal callback, exit_callback, error_callback
             left_phases = []
             for controller in self._controller_queue[dp.id]:
                 left_phases.append(controller._name)
@@ -322,7 +325,7 @@ class PipelineInstance:
             if dp.success:
                 if len(self._controller_queue[dp.id]) > 0:
                     controller = self._controller_queue[dp.id].pop(0)
-                    controller.execute(self._execution_lock, dp, new_callback, error_callback)
+                    controller.execute(self._execution_lock, dp, new_callback, exit_callback, error_callback)
                     # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
                     return
             
@@ -352,6 +355,9 @@ class PipelineInstance:
 
             if dp.success:
                 callback(dp)
+            elif len(dp.errors) == 0:
+                if exit_callback:
+                    exit_callback(dp)
             else:
                 if error_callback:
                     error_callback(dp)
@@ -434,7 +440,7 @@ class Pipeline(Generic[T]):
                 del self._pipeline_instances[ex_id]
                 del self._instances_controllers[ex_id]
 
-    def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], error_callback: Union[Callable[[DataPackage[T]], None], None] = None) -> DataPackage:
+    def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], exit_callback: Optional[Callable[[DataPackage[T]], None]] = None, error_callback: Optional[Callable[[DataPackage[T]], None]] = None) -> DataPackage[T]:
         ex = self._get_instance(instance_id)
         if not ex:
             raise ValueError("Instance ID not found")
@@ -451,5 +457,5 @@ class Pipeline(Generic[T]):
         dp.start_time=time.time()
 
         dp.running = True
-        ex.execute(temp_phases, dp, callback, error_callback)
+        ex.execute(temp_phases, dp, callback, exit_callback, error_callback)
         return dp
