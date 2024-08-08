@@ -47,7 +47,7 @@ def main() -> None:
             if dp.data:
                 if dp.data.key:
                     dp.data.key = dp.data.key.upper()
-                    dpm.success = False
+                    dpm.success = True
                     dpm.message = "Transformation succeeded"
                 else:
                     dpm.success = False
@@ -104,6 +104,7 @@ def main() -> None:
         PipelineController(
             mode=ControllerMode.ORDER_BY_SEQUENCE,
             max_workers=10,
+            # max_queue_size=5,
             name="phase3",
             phases=[
                 PipelinePhase([
@@ -139,6 +140,8 @@ def main() -> None:
         if dp.controller and dp.controller[-1].phases and dp.controller[-1].phases[-1].modules:
             last_module = dp.controller[-1].phases[-1].modules[-1]
             print(f"EXIT: {last_module.id}")
+        elif dp.controller and dp.controller[-1]:
+            print(f"EXIT: {dp.controller[-1].id}")
 
         with counter_mutex:
             counter = counter + 1

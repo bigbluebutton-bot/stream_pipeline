@@ -1,6 +1,8 @@
 
 
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 import time
 
 from stream_pipeline.error import exception_to_error
@@ -193,6 +195,14 @@ class OrderTracker:
                 
             return finished_data_packages
 
+@dataclass
+class QueueData:
+    start_context: str
+    dp_phase_con: DataPackagePhaseController
+    data_package: DataPackage
+    start_time: float
+    instance_lock: threading.Lock
+
 class PipelineController:
     def __init__(self, phases: List[PipelinePhase], name: str = "", max_workers: int = 1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
         self._id: str = f"PPE-{uuid.uuid4()}"
@@ -206,9 +216,11 @@ class PipelineController:
         self._max_workers = max_workers
 
         self._executor = ThreadPoolExecutor(max_workers=max_workers) if max_workers > 0 else None
-        self._active_futures: Dict[str, Future] = {}
 
         self._order_tracker = OrderTracker()
+
+        self._dp_queue: deque = deque(maxlen=10) # Hase data in it of type QueueData
+        self._dp_queue_lock = threading.Lock()
 
         self._lock = threading.Lock()
 
@@ -224,60 +236,92 @@ class PipelineController:
 
         # print(f"Starting {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
         data_package.controller.append(dp_phase_con)
-        
+
         self._order_tracker.add_data(data_package)
         
         start_context = threading.current_thread().name
 
         def execute_phases() -> None:
-            nonlocal start_context, dp_phase_con, data_package, start_time, instance_lock
             try:
-                start_processing_time = time.time()
-                dp_phase_con.waiting_time = time.time() - start_time
+                while True:
+                    queue_data: Optional[QueueData] = None
+                    with self._dp_queue_lock:
+                        if len(self._dp_queue) == 0:
+                            break
 
-                temp_phases = []
-                with self._lock:
-                    temp_phases = self._phases.copy()
+                        queue_data = self._dp_queue.popleft()
 
-                for phase in temp_phases:
-                    phase.execute(data_package, dp_phase_con)
-                    if not data_package.success:
-                        break
+                    if queue_data is None:
+                        continue
 
-                # print(f"Phase {self._name} finished {data_package.data} with sequence number {dp_phase_ex.sequence_number}: {id(self._order_tracker)}")
+                    start_context = queue_data.start_context
+                    dp_phase_con = queue_data.dp_phase_con
+                    data_package = queue_data.data_package
+                    start_time = queue_data.start_time
+                    instance_lock = queue_data.instance_lock
 
+                    # set the context of the thread
+                    threading.current_thread().start_context = start_context # type: ignore
+                    
+                    try:
+                        start_processing_time = time.time()
+                        dp_phase_con.waiting_time = time.time() - start_time
+
+                        temp_phases = []
+                        with self._lock:
+                            temp_phases = self._phases.copy()
+
+                        for phase in temp_phases:
+                            phase.execute(data_package, dp_phase_con)
+                            if not data_package.success:
+                                break
+
+                        # print(f"Phase {self._name} finished {data_package.data} with sequence number {dp_phase_ex.sequence_number}: {id(self._order_tracker)}")
+
+                    except Exception as e:
+                        data_package.success = False
+                        data_package.errors.append(exception_to_error(e))
+
+
+                    dp_phase_con.end_time = time.time()
+                    dp_phase_con.processing_time = dp_phase_con.end_time - start_processing_time
+                    dp_phase_con.total_time = dp_phase_con.end_time - dp_phase_con.start_time
+                    dp_phase_con.running = False
+
+                    with instance_lock:
+                        self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
+                        finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
+                        for finished_data_package in finished_data_packages:
+                            if finished_data_package.success:
+                                callback(finished_data_package)
+                            elif len(finished_data_package.errors) == 0:
+                                if exit_callback:
+                                    exit_callback(finished_data_package)
+                            else:
+                                if error_callback:
+                                    error_callback(finished_data_package)
             except Exception as e:
-                data_package.success = False
-                data_package.errors.append(exception_to_error(e))
+                print(exception_to_error(e))
 
+        popped_value: Optional[QueueData] = None
+        with self._dp_queue_lock:
+            if len(self._dp_queue) == self._dp_queue.maxlen:
+                popped_value = self._dp_queue[0]
 
-            dp_phase_con.end_time = time.time()
-            dp_phase_con.processing_time = dp_phase_con.end_time - start_processing_time
-            dp_phase_con.total_time = dp_phase_con.end_time - dp_phase_con.start_time
-            dp_phase_con.running = False
+            self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time, instance_lock))
 
-            with instance_lock:
-                self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
-                finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
-                for finished_data_package in finished_data_packages:
-                    if finished_data_package.success:
-                        callback(finished_data_package)
-                    elif len(finished_data_package.errors) == 0:
-                        if exit_callback:
-                            exit_callback(finished_data_package)
-                    else:
-                        if error_callback:
-                            error_callback(finished_data_package)
+        if popped_value:
+            if exit_callback:
+                exit_callback(popped_value.data_package)
 
-        
         if self._executor is None:
             execute_phases()
             return
 
-        eid = f"{self.get_id()}-{dp_phase_con.sequence_number}"
-        future = self._executor.submit(execute_phases)
-        if self._mode == ControllerMode.FIRST_WINS:
-            self._active_futures[eid] = future
+        # start the executor if there is space, else a worker will pop a QueueData and execute it, so no need to start a new worker
+        with self._dp_queue_lock: # make shure that a worker doese not end shortly after the if statement
+            if self._executor._work_queue.qsize() < self._executor._max_workers:
+                self._executor.submit(execute_phases)
         
 
 
