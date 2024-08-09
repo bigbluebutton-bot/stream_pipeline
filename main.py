@@ -103,8 +103,8 @@ def main() -> None:
         ),
         PipelineController(
             mode=ControllerMode.ORDER_BY_SEQUENCE,
-            max_workers=10,
-            # max_queue_size=5,
+            max_workers=4,
+            queue_size=2,
             name="phase3",
             phases=[
                 PipelinePhase([
@@ -137,11 +137,7 @@ def main() -> None:
     def exit_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
         # get last module in the pipeline
-        if dp.controller and dp.controller[-1].phases and dp.controller[-1].phases[-1].modules:
-            last_module = dp.controller[-1].phases[-1].modules[-1]
-            print(f"EXIT: {last_module.id}")
-        elif dp.controller and dp.controller[-1]:
-            print(f"EXIT: {dp.controller[-1].id}")
+        print(f"Exit: {dp.data}")
 
         with counter_mutex:
             counter = counter + 1

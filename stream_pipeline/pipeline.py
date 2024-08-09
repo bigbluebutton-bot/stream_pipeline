@@ -90,10 +90,12 @@ class OrderTracker:
     def __init__(self) -> None:
         self._next_sequence_number = 0
         self._last_finished_sequence_number = -1
-        self._data_packages: Dict[int, DataPackage] = {}
-        self._finished_data_packages: Dict[int, DataPackage] = {}
+        self._data_packages: Dict[int, Optional[DataPackage]] = {}
+        self._finished_data_packages: Dict[int, Optional[DataPackage]] = {}
 
         self._lock = threading.Lock()
+
+        self.instance_lock = threading.Lock()
 
     def get_last_finished_sequence_number(self) -> int:
         """
@@ -127,8 +129,12 @@ class OrderTracker:
             sequence_number (int): The sequence number of the data package to remove.
         """
         with self._lock:
-            self._data_packages.pop(sequence_number, None)
-            self._finished_data_packages.pop(sequence_number, None)
+            if sequence_number in self._data_packages:
+                self._data_packages.pop(sequence_number)
+                self._finished_data_packages[sequence_number] = None
+            else:
+                raise ValueError("Sequence number not found in data packages.")
+            
 
     def push_finished_data_package(self, sequence_number: int) -> None:
         """
@@ -169,6 +175,8 @@ class OrderTracker:
 
             if (mode == ControllerMode.NO_ORDER):
                 for sequence_number, data_package in self._finished_data_packages.items():
+                    if data_package is None:
+                        continue
                     finished_data_packages.append(data_package)
                 self._finished_data_packages = {}
                     
@@ -177,18 +185,22 @@ class OrderTracker:
 
                 while current_sequence in self._finished_data_packages:
                     data_package = self._finished_data_packages.pop(current_sequence)
-                    finished_data_packages.append(data_package)
                     self._last_finished_sequence_number = current_sequence
                     current_sequence = current_sequence + 1
+                    if data_package is None:
+                        continue
+                    finished_data_packages.append(data_package)
 
             elif mode == ControllerMode.FIRST_WINS:
                 # find each dp which has a bigger sequence number than the last finished sequence number
                 last_sequence_number = self._last_finished_sequence_number + 1
                 for sequence_number, data_package in self._finished_data_packages.items():
                     if sequence_number >= last_sequence_number:
-                        finished_data_packages.append(data_package)
                         self._last_finished_sequence_number = sequence_number
                         last_sequence_number = sequence_number + 1
+                        if data_package is None:
+                            continue
+                        finished_data_packages.append(data_package)
 
                 # remove the data packages from the finished queue
                 self._finished_data_packages.clear()
@@ -201,30 +213,33 @@ class QueueData:
     dp_phase_con: DataPackagePhaseController
     data_package: DataPackage
     start_time: float
-    instance_lock: threading.Lock
 
 class PipelineController:
-    def __init__(self, phases: List[PipelinePhase], name: str = "", max_workers: int = 1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
+    def __init__(self, phases: List[PipelinePhase], name: str = "", max_workers: int = 1, queue_size: int = -1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
         self._id: str = f"PPE-{uuid.uuid4()}"
         self._name: str = name if name else self._id
         self._phases: List[PipelinePhase] = phases
         self._mode: ControllerMode = mode
 
-        if mode == ControllerMode.NOT_PARALLEL and max_workers > 1:
+        if queue_size < 0:
+            queue_size = max_workers
+
+        if (mode == ControllerMode.NOT_PARALLEL and max_workers > 1) or max_workers < 1:
             max_workers = 1
 
         self._max_workers = max_workers
 
-        self._executor = ThreadPoolExecutor(max_workers=max_workers) if max_workers > 0 else None
+        self._executor = ThreadPoolExecutor(max_workers=max_workers)
 
         self._order_tracker = OrderTracker()
 
-        self._dp_queue: deque = deque(maxlen=10) # Hase data in it of type QueueData
+        self._queue_size = queue_size
+        self._dp_queue: deque = deque(maxlen=queue_size) # Hase data in it of type QueueData
         self._dp_queue_lock = threading.Lock()
 
         self._lock = threading.Lock()
 
-    def execute(self, instance_lock: threading.Lock, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
+    def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
         start_time = time.time()
 
         dp_phase_con = DataPackagePhaseController()
@@ -254,11 +269,12 @@ class PipelineController:
                     if queue_data is None:
                         continue
 
+                    # print(f"C{len(queue_data.data_package.controller)} Starting {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
+
                     start_context = queue_data.start_context
                     dp_phase_con = queue_data.dp_phase_con
                     data_package = queue_data.data_package
                     start_time = queue_data.start_time
-                    instance_lock = queue_data.instance_lock
 
                     # set the context of the thread
                     threading.current_thread().start_context = start_context # type: ignore
@@ -279,6 +295,7 @@ class PipelineController:
                         # print(f"Phase {self._name} finished {data_package.data} with sequence number {dp_phase_ex.sequence_number}: {id(self._order_tracker)}")
 
                     except Exception as e:
+                        # print(exception_to_error(e))
                         data_package.success = False
                         data_package.errors.append(exception_to_error(e))
 
@@ -288,9 +305,11 @@ class PipelineController:
                     dp_phase_con.total_time = dp_phase_con.end_time - dp_phase_con.start_time
                     dp_phase_con.running = False
 
-                    with instance_lock:
+                    with self._order_tracker.instance_lock:
+                        # print(f"C{len(queue_data.data_package.controller)} Finished {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
                         self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
                         finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
+                        # print(f"C{len(queue_data.data_package.controller)} {len(finished_data_packages)}")
                         for finished_data_package in finished_data_packages:
                             if finished_data_package.success:
                                 callback(finished_data_package)
@@ -308,20 +327,20 @@ class PipelineController:
             if len(self._dp_queue) == self._dp_queue.maxlen:
                 popped_value = self._dp_queue[0]
 
-            self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time, instance_lock))
+            # print(f"C{len(data_package.controller)} Put in Queue: {data_package.data}")
+            self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time))
+
+            if popped_value:
+                with self._order_tracker.instance_lock:
+                    self._order_tracker.remove_data(popped_value.dp_phase_con.sequence_number)
+                    # print(f"Pop from Queue with E: {popped_value.data_package.data}")
+
+            if self._executor._work_queue.qsize() < self._executor._max_workers:
+                self._executor.submit(execute_phases)
 
         if popped_value:
             if exit_callback:
                 exit_callback(popped_value.data_package)
-
-        if self._executor is None:
-            execute_phases()
-            return
-
-        # start the executor if there is space, else a worker will pop a QueueData and execute it, so no need to start a new worker
-        with self._dp_queue_lock: # make shure that a worker doese not end shortly after the if statement
-            if self._executor._work_queue.qsize() < self._executor._max_workers:
-                self._executor.submit(execute_phases)
         
 
 
@@ -331,6 +350,7 @@ class PipelineController:
             name=self._name,
             phases=[phase.__deepcopy__(memo) for phase in self._phases],
             mode=self._mode,
+            queue_size=self._queue_size,
             max_workers=self._max_workers,
         )
         copied_controller._id = self._id
@@ -351,7 +371,6 @@ class PipelineInstance:
         self._controller_queue: Dict[str, List[PipelineController]] = {}
 
         self._lock = threading.Lock()
-        self._execution_lock = threading.Lock()
 
     def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
         dp.pipeline_instance_id = self._id
@@ -369,7 +388,7 @@ class PipelineInstance:
             if dp.success:
                 if len(self._controller_queue[dp.id]) > 0:
                     controller = self._controller_queue[dp.id].pop(0)
-                    controller.execute(self._execution_lock, dp, new_callback, exit_callback, error_callback)
+                    controller.execute(dp, new_callback, exit_callback, error_callback)
                     # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
                     return
             
