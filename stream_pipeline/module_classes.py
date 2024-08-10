@@ -120,7 +120,8 @@ class Module(ABC):
 
         if not dpm.success:
             data_package.success = False
-            data_package.errors.append(dpm.error)
+            if dpm.error:
+                data_package.errors.append(dpm.error)
             MODULE_ERROR_COUNTER.labels(module_name=self.__class__.__name__).inc()
         
         end_time = time.time()

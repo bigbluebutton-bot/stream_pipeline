@@ -28,7 +28,7 @@ def main() -> None:
     class DataValidationModule(ExecutionModule):
         def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
             if dp.data and dp.data.key:
-                dp.success = True
+                dpm.success = True
                 dpm.message = "Validation succeeded"
             else:
                 raise ValueError("Validation failed: key missing")
@@ -47,10 +47,10 @@ def main() -> None:
             if dp.data:
                 if dp.data.key:
                     dp.data.key = dp.data.key.upper()
-                    dp.success = True
+                    dpm.success = True
                     dpm.message = "Transformation succeeded"
                 else:
-                    dp.success = False
+                    dpm.success = False
                     dpm.message = "Transformation failed: key missing"
 
     class DataConditionModule(ConditionModule):
@@ -63,19 +63,19 @@ def main() -> None:
         def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
             if dp.data:
                 dp.data.status = "success"
-                dp.success = True
+                dpm.success = True
                 dpm.message = "Condition true: success"
 
     class FailureModule(ExecutionModule):
         def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
             if dp.data:
                 dp.data.status = "failure"
-                dp.success = True
+                dpm.success = True
                 dpm.message = "Condition false: failure"
 
     class AlwaysTrue(ExecutionModule):
         def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
-            dp.success = True
+            dpm.success = True
             dpm.message = "Always true"
 
     # Setting up the processing pipeline
@@ -103,7 +103,8 @@ def main() -> None:
         ),
         PipelineController(
             mode=ControllerMode.ORDER_BY_SEQUENCE,
-            max_workers=10,
+            max_workers=4,
+            queue_size=2,
             name="phase3",
             phases=[
                 PipelinePhase([
@@ -133,15 +134,25 @@ def main() -> None:
         with counter_mutex:
             counter = counter + 1
 
+    def exit_callback(dp: DataPackage[Data]) -> None:
+        nonlocal counter, counter_mutex
+        # get last module in the pipeline
+        print(f"Exit: {dp.data}")
+
+        with counter_mutex:
+            counter = counter + 1
+
+
+
     def error_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
-        print(f"ERROR: {dp}")
+        print(f"ERROR: {dp.errors[0]}")
         with counter_mutex:
             counter = counter + 1
 
     # Function to execute the processing pipeline
     def process_data(data: Data) -> Union[DataPackage, None]:
-        return pipeline.execute(data, pip_ex_id, callback, error_callback)
+        return pipeline.execute(data, pip_ex_id, callback, exit_callback, error_callback)
 
     # Example data
     data_list: List[Data] = [
