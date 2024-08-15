@@ -73,10 +73,16 @@ def main() -> None:
                 dpm.success = True
                 dpm.message = "Condition false: failure"
 
-    class AlwaysTrue(ExecutionModule):
+    class RandomExit(ExecutionModule):
         def execute(self, dp: DataPackage[Data], dpm: DataPackageModule) -> None:
-            dpm.success = True
-            dpm.message = "Always true"
+            list1 = [True, True, True, True, True, False]
+            randombool = random.choice(list1)
+            if randombool:
+                dpm.success = True
+                dpm.message = "Random exit: success"
+            else:
+                dpm.success = False
+                dpm.message = "Random exit: failure"
 
     # Setting up the processing pipeline
     phases = [
@@ -97,7 +103,7 @@ def main() -> None:
             phases=[
                 PipelinePhase([
                     DataConditionModule(SuccessModule(), FailureModule()),
-                    AlwaysTrue(),
+                    RandomExit(),
                 ]),
             ],
         ),
@@ -137,12 +143,16 @@ def main() -> None:
     def exit_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
         # get last module in the pipeline
-        print(f"Exit: {dp.data}")
+        print(f"EXIT: {dp.data}")
 
         with counter_mutex:
             counter = counter + 1
 
-
+    def overflown_callback(dp: DataPackage[Data]) -> None:
+        nonlocal counter, counter_mutex
+        print(f"OVERFLOWN: {dp.data}")
+        with counter_mutex:
+            counter = counter + 1
 
     def error_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
@@ -152,7 +162,7 @@ def main() -> None:
 
     # Function to execute the processing pipeline
     def process_data(data: Data) -> Union[DataPackage, None]:
-        return pipeline.execute(data, pip_ex_id, callback, exit_callback, error_callback)
+        return pipeline.execute(data, pip_ex_id, callback, exit_callback, overflown_callback, error_callback)
 
     # Example data
     data_list: List[Data] = [
