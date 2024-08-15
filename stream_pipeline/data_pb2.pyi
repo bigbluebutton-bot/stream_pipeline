@@ -142,7 +142,6 @@ class DataPackageModule(google.protobuf.message.Message):
     START_TIME_FIELD_NUMBER: builtins.int
     END_TIME_FIELD_NUMBER: builtins.int
     WAITING_TIME_FIELD_NUMBER: builtins.int
-    PROCESSING_TIME_FIELD_NUMBER: builtins.int
     TOTAL_TIME_FIELD_NUMBER: builtins.int
     SUB_MODULES_FIELD_NUMBER: builtins.int
     MESSAGE_FIELD_NUMBER: builtins.int
@@ -153,7 +152,6 @@ class DataPackageModule(google.protobuf.message.Message):
     start_time: builtins.float
     end_time: builtins.float
     waiting_time: builtins.float
-    processing_time: builtins.float
     total_time: builtins.float
     message: builtins.str
     success: builtins.bool
@@ -169,7 +167,6 @@ class DataPackageModule(google.protobuf.message.Message):
         start_time: builtins.float = ...,
         end_time: builtins.float = ...,
         waiting_time: builtins.float = ...,
-        processing_time: builtins.float = ...,
         total_time: builtins.float = ...,
         sub_modules: collections.abc.Iterable[global___DataPackageModule] | None = ...,
         message: builtins.str = ...,
@@ -177,7 +174,7 @@ class DataPackageModule(google.protobuf.message.Message):
         error: global___Error | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["error", b"error"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["end_time", b"end_time", "error", b"error", "id", b"id", "message", b"message", "processing_time", b"processing_time", "running", b"running", "start_time", b"start_time", "sub_modules", b"sub_modules", "success", b"success", "total_time", b"total_time", "waiting_time", b"waiting_time"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["end_time", b"end_time", "error", b"error", "id", b"id", "message", b"message", "running", b"running", "start_time", b"start_time", "sub_modules", b"sub_modules", "success", b"success", "total_time", b"total_time", "waiting_time", b"waiting_time"]) -> None: ...
 
 global___DataPackageModule = DataPackageModule
 
@@ -191,13 +188,13 @@ class DataPackagePhase(google.protobuf.message.Message):
     RUNNING_FIELD_NUMBER: builtins.int
     START_TIME_FIELD_NUMBER: builtins.int
     END_TIME_FIELD_NUMBER: builtins.int
-    PROCESSING_TIME_FIELD_NUMBER: builtins.int
+    TOTAL_TIME_FIELD_NUMBER: builtins.int
     MODULES_FIELD_NUMBER: builtins.int
     id: builtins.str
     running: builtins.bool
     start_time: builtins.float
     end_time: builtins.float
-    processing_time: builtins.float
+    total_time: builtins.float
     @property
     def modules(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___DataPackageModule]: ...
     def __init__(
@@ -207,10 +204,10 @@ class DataPackagePhase(google.protobuf.message.Message):
         running: builtins.bool = ...,
         start_time: builtins.float = ...,
         end_time: builtins.float = ...,
-        processing_time: builtins.float = ...,
+        total_time: builtins.float = ...,
         modules: collections.abc.Iterable[global___DataPackageModule] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["end_time", b"end_time", "id", b"id", "modules", b"modules", "processing_time", b"processing_time", "running", b"running", "start_time", b"start_time"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["end_time", b"end_time", "id", b"id", "modules", b"modules", "running", b"running", "start_time", b"start_time", "total_time", b"total_time"]) -> None: ...
 
 global___DataPackagePhase = DataPackagePhase
 
@@ -228,7 +225,6 @@ class DataPackagePhaseController(google.protobuf.message.Message):
     START_TIME_FIELD_NUMBER: builtins.int
     END_TIME_FIELD_NUMBER: builtins.int
     WAITING_TIME_FIELD_NUMBER: builtins.int
-    PROCESSING_TIME_FIELD_NUMBER: builtins.int
     TOTAL_TIME_FIELD_NUMBER: builtins.int
     PHASES_FIELD_NUMBER: builtins.int
     id: builtins.str
@@ -239,7 +235,6 @@ class DataPackagePhaseController(google.protobuf.message.Message):
     start_time: builtins.float
     end_time: builtins.float
     waiting_time: builtins.float
-    processing_time: builtins.float
     total_time: builtins.float
     @property
     def phases(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___DataPackagePhase]: ...
@@ -254,11 +249,10 @@ class DataPackagePhaseController(google.protobuf.message.Message):
         start_time: builtins.float = ...,
         end_time: builtins.float = ...,
         waiting_time: builtins.float = ...,
-        processing_time: builtins.float = ...,
         total_time: builtins.float = ...,
         phases: collections.abc.Iterable[global___DataPackagePhase] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["end_time", b"end_time", "id", b"id", "mode", b"mode", "phases", b"phases", "processing_time", b"processing_time", "running", b"running", "sequence_number", b"sequence_number", "start_time", b"start_time", "total_time", b"total_time", "waiting_time", b"waiting_time", "workers", b"workers"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["end_time", b"end_time", "id", b"id", "mode", b"mode", "phases", b"phases", "running", b"running", "sequence_number", b"sequence_number", "start_time", b"start_time", "total_time", b"total_time", "waiting_time", b"waiting_time", "workers", b"workers"]) -> None: ...
 
 global___DataPackagePhaseController = DataPackagePhaseController
 
@@ -276,8 +270,6 @@ class DataPackage(google.protobuf.message.Message):
     RUNNING_FIELD_NUMBER: builtins.int
     START_TIME_FIELD_NUMBER: builtins.int
     END_TIME_FIELD_NUMBER: builtins.int
-    TOTAL_WAITING_TIME_FIELD_NUMBER: builtins.int
-    TOTAL_PROCESSING_TIME_FIELD_NUMBER: builtins.int
     TOTAL_TIME_FIELD_NUMBER: builtins.int
     SUCCESS_FIELD_NUMBER: builtins.int
     ERRORS_FIELD_NUMBER: builtins.int
@@ -288,8 +280,6 @@ class DataPackage(google.protobuf.message.Message):
     running: builtins.bool
     start_time: builtins.float
     end_time: builtins.float
-    total_waiting_time: builtins.float
-    total_processing_time: builtins.float
     total_time: builtins.float
     success: builtins.bool
     @property
@@ -307,13 +297,11 @@ class DataPackage(google.protobuf.message.Message):
         running: builtins.bool = ...,
         start_time: builtins.float = ...,
         end_time: builtins.float = ...,
-        total_waiting_time: builtins.float = ...,
-        total_processing_time: builtins.float = ...,
         total_time: builtins.float = ...,
         success: builtins.bool = ...,
         errors: collections.abc.Iterable[global___Error] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["controller", b"controller", "data", b"data", "end_time", b"end_time", "errors", b"errors", "id", b"id", "pipeline_id", b"pipeline_id", "pipeline_instance_id", b"pipeline_instance_id", "running", b"running", "start_time", b"start_time", "success", b"success", "total_processing_time", b"total_processing_time", "total_time", b"total_time", "total_waiting_time", b"total_waiting_time"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["controller", b"controller", "data", b"data", "end_time", b"end_time", "errors", b"errors", "id", b"id", "pipeline_id", b"pipeline_id", "pipeline_instance_id", b"pipeline_instance_id", "running", b"running", "start_time", b"start_time", "success", b"success", "total_time", b"total_time"]) -> None: ...
 
 global___DataPackage = DataPackage
 

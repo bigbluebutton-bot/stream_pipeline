@@ -71,7 +71,6 @@ class Module(ABC):
         dpm.start_time=0.0
         dpm.end_time=0.0
         dpm.waiting_time=0.0
-        dpm.processing_time=0.0
         dpm.total_time=0.0
         dpm.success=True
         dpm.error=None
@@ -85,18 +84,17 @@ class Module(ABC):
             else:
                 raise ValueError("Parent module or phase must be provided.")
         
-        start_total_time = time.time()
+        start_time = time.time()
+        dpm.start_time = start_time
         waiting_time = 0.0
         if self._use_mutex:
             MODULE_WAITING_COUNTER.labels(module_name=self.__class__.__name__).inc()
             self._mutex.acquire()
-            waiting_time = time.time() - start_total_time
+            waiting_time = time.time() - start_time
             dpm.waiting_time = waiting_time
             MODULE_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(waiting_time)
             MODULE_WAITING_COUNTER.labels(module_name=self.__class__.__name__).dec()
-
-        start_time = time.time()
-        dpm.start_time = start_total_time
+        
         
         # Create a thread to execute the execute method
         execute_thread = threading.Thread(target=self._execute_with_result, args=(data_package, dpm))
@@ -126,19 +124,17 @@ class Module(ABC):
         
         end_time = time.time()
         dpm.end_time = end_time
-        processing_time = end_time - start_time
-        dpm.processing_time = processing_time
-        total_time = end_time - start_total_time
+        total_time = end_time - start_time
         dpm.total_time = total_time
         dpm.running = False
 
 
-        if data_package.success:
-            MODULE_PROCESSING_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(processing_time)
-            MODULE_TOTAL_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(total_time)
+        # if data_package.success:
+        #     MODULE_PROCESSING_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(processing_time)
+        #     MODULE_TOTAL_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(total_time)
         
-        MODULE_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(processing_time)
-        MODULE_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(total_time)
+        # MODULE_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(processing_time)
+        # MODULE_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(total_time)
         
         if self._use_mutex:
             self._mutex.release()

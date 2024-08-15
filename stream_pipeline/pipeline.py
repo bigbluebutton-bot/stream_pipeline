@@ -76,7 +76,7 @@ class PipelinePhase:
         ent_time = time.time()
         dp_phase.running = False
         dp_phase.end_time = ent_time
-        dp_phase.processing_time = ent_time - start_time
+        dp_phase.total_time = ent_time - start_time
 
     def __deepcopy__(self, memo: Dict) -> 'PipelinePhase':
         copied_phase = PipelinePhase(
@@ -301,7 +301,6 @@ class PipelineController:
 
 
                     dp_phase_con.end_time = time.time()
-                    dp_phase_con.processing_time = dp_phase_con.end_time - start_processing_time
                     dp_phase_con.total_time = dp_phase_con.end_time - dp_phase_con.start_time
                     dp_phase_con.running = False
 
@@ -396,23 +395,6 @@ class PipelineInstance:
 
             dp.end_time = time.time()
             dp.total_time = dp.end_time - dp.start_time
-
-            def calculate_total_waiting_time(module: DataPackageModule) -> float:
-                total_waiting_time = module.waiting_time
-                for sub_module in module.sub_modules:
-                    total_waiting_time += calculate_total_waiting_time(sub_module)
-                return total_waiting_time
-
-            # calculate waiting time
-            temp_waiting = 0.0
-            for dp_controller in dp.controller:
-                temp_waiting += dp_controller.waiting_time
-                for ph in dp_controller.phases:
-                    for module in ph.modules:
-                        temp_waiting += calculate_total_waiting_time(module)
-            
-            dp.total_waiting_time = temp_waiting
-            dp.total_processing_time = sum([dp_controller.processing_time for dp_controller in dp.controller]) - dp.total_waiting_time
 
             dp.running = False
 

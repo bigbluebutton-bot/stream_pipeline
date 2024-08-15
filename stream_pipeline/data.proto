@@ -25,12 +25,11 @@ message DataPackageModule {
     double start_time = 3;
     double end_time = 4;
     double waiting_time = 5;
-    double processing_time = 6;
-    double total_time = 7;
-    repeated DataPackageModule sub_modules = 8;
-    string message = 9;
-    bool success = 10;
-    Error error = 11;
+    double total_time = 8;
+    repeated DataPackageModule sub_modules = 9;
+    string message = 10;
+    bool success = 11;
+    Error error = 12;
 }
 
 // DataPackagePhase message definition
@@ -39,7 +38,7 @@ message DataPackagePhase {
     bool running = 2;
     double start_time = 3;
     double end_time = 4;
-    double processing_time = 5;
+    double total_time = 5;
     repeated DataPackageModule modules = 6;
 }
 
@@ -53,9 +52,8 @@ message DataPackagePhaseController {
     double start_time = 6;
     double end_time = 7;
     double waiting_time = 8;
-    double processing_time = 9;
-    double total_time = 10;
-    repeated DataPackagePhase phases = 11;
+    double total_time = 9;
+    repeated DataPackagePhase phases = 10;
 }
 
 // DataPackage message definition
@@ -68,11 +66,9 @@ message DataPackage {
     bool running = 6;
     double start_time = 7;
     double end_time = 8;
-    double total_waiting_time = 9;
-    double total_processing_time = 10;
-    double total_time = 11;
-    bool success = 12;
-    repeated Error errors = 13;
+    double total_time = 10;
+    bool success = 11;
+    repeated Error errors = 12;
 }
 
 message RequestDPandDPM {

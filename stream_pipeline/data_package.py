@@ -20,7 +20,6 @@ class DataPackageModule(ThreadSafeClass):
         start_time (float):                     Timestamp when the module started.
         end_time (float):                       Timestamp when the module finished.
         waiting_time (float):                   Time spent waiting for the mutex to unlock.
-        processing_time (float):                Time spent processing the data package.
         total_time (float):                     Total time spent on the data package processing.
         sub_modules (List[DataPackageModule]):  List of sub-modules that processed the data package.
         message (str):                          Informational message.
@@ -32,7 +31,6 @@ class DataPackageModule(ThreadSafeClass):
     _start_time: float = 0.0
     _end_time: float = 0.0
     _waiting_time: float = 0.0
-    _processing_time: float = 0.0
     _total_time: float = 0.0
     _sub_modules: List['DataPackageModule'] = field(default_factory=list)
     _message: str = ""
@@ -80,14 +78,6 @@ class DataPackageModule(ThreadSafeClass):
     @waiting_time.setter
     def waiting_time(self, value: float) -> None:
         self._set_attribute('waiting_time', value)
-    
-    @property
-    def processing_time(self) -> float:
-        return self._get_attribute('processing_time')
-    
-    @processing_time.setter
-    def processing_time(self, value: float) -> None:
-        self._set_attribute('processing_time', value)
     
     @property
     def total_time(self) -> float:
@@ -143,7 +133,6 @@ class DataPackageModule(ThreadSafeClass):
         self.start_time = grpc_module.start_time
         self.end_time = grpc_module.end_time
         self.waiting_time = grpc_module.waiting_time
-        self.processing_time = grpc_module.processing_time
         self.total_time = grpc_module.total_time
 
         existing_sub_modules = {sub_module.id: sub_module for sub_module in self.sub_modules}
@@ -177,7 +166,6 @@ class DataPackageModule(ThreadSafeClass):
         grpc_module.start_time = self.start_time
         grpc_module.end_time = self.end_time
         grpc_module.waiting_time = self.waiting_time
-        grpc_module.processing_time = self.processing_time
         grpc_module.total_time = self.total_time
         grpc_module.sub_modules.extend([module.to_grpc() for module in self.sub_modules])
         grpc_module.message = self.message
@@ -201,14 +189,14 @@ class DataPackagePhase(ThreadSafeClass):
         running (bool):                     Indicates if the phase is currently running.
         start_time (float):                 Timestamp when the phase started.
         end_time (float):                   Timestamp when the phase finished.
-        processing_time (float):            Time spent processing the data package.
+        total_time (float):                 Total time spent on the phase.
         modules (List[DataPackageModule]):  List of modules that processed the data package.
     """
     _id: str = field(default_factory=lambda: "Phase-" + str(uuid.uuid4()))
     _running: bool = False
     _start_time: float = 0.0
     _end_time: float = 0.0
-    _processing_time: float = 0.0
+    _total_time: float = 0.0
     _modules: List['DataPackageModule'] = field(default_factory=list)
 
     # Immutable attributes
@@ -247,12 +235,12 @@ class DataPackagePhase(ThreadSafeClass):
         self._set_attribute('end_time', value)
     
     @property
-    def processing_time(self) -> float:
-        return self._get_attribute('processing_time')
+    def total_time(self) -> float:
+        return self._get_attribute('total_time')
     
-    @processing_time.setter
-    def processing_time(self, value: float) -> None:
-        self._set_attribute('processing_time', value)
+    @total_time.setter
+    def total_time(self, value: float) -> None:
+        self._set_attribute('total_time', value)
     
     @property
     def modules(self) -> List['DataPackageModule']:
@@ -273,7 +261,7 @@ class DataPackagePhase(ThreadSafeClass):
         self.running = grpc_phase.running
         self.start_time = grpc_phase.start_time
         self.end_time = grpc_phase.end_time
-        self.processing_time = grpc_phase.processing_time
+        self.total_time = grpc_phase.total_time
 
         existing_modules = {module.id: module for module in self.modules}
         for module in grpc_phase.modules:
@@ -296,7 +284,7 @@ class DataPackagePhase(ThreadSafeClass):
         grpc_phase.running = self.running
         grpc_phase.start_time = self.start_time
         grpc_phase.end_time = self.end_time
-        grpc_phase.processing_time = self.processing_time
+        grpc_phase.total_time = self.total_time
         grpc_phase.modules.extend([module.to_grpc() for module in self.modules])
         return grpc_phase
 
@@ -315,7 +303,6 @@ class DataPackagePhaseController(ThreadSafeClass):
         start_time (float):                 Timestamp when the phase execution started.
         end_time (float):                   Timestamp when the phase execution finished.
         waiting_time (float):               Time spent waiting for the thread pool to unlock.
-        processing_time (float):            Time spent processing the phases.
         total_time (float):                 Total time spent on phase execution.
         phases (List[DataPackagePhase]):    List of phases that processed the data package.
     """
@@ -327,7 +314,6 @@ class DataPackagePhaseController(ThreadSafeClass):
     _start_time: float = 0.0
     _end_time: float = 0.0
     _waiting_time: float = 0.0
-    _processing_time: float = 0.0
     _total_time: float = 0.0
     _phases: List[DataPackagePhase] = field(default_factory=list)
     
@@ -398,14 +384,6 @@ class DataPackagePhaseController(ThreadSafeClass):
         self._set_attribute('waiting_time', value)
     
     @property
-    def processing_time(self) -> float:
-        return self._get_attribute('processing_time')
-    
-    @processing_time.setter
-    def processing_time(self, value: float) -> None:
-        self._set_attribute('processing_time', value)
-    
-    @property
     def total_time(self) -> float:
         return self._get_attribute('total_time')
     
@@ -436,7 +414,6 @@ class DataPackagePhaseController(ThreadSafeClass):
         self.start_time = grpc_execution.start_time
         self.end_time = grpc_execution.end_time
         self.waiting_time = grpc_execution.waiting_time
-        self.processing_time = grpc_execution.processing_time
         self.total_time = grpc_execution.total_time
 
         existing_phases = {phase.id: phase for phase in self.phases}
@@ -464,7 +441,6 @@ class DataPackagePhaseController(ThreadSafeClass):
         grpc_execution.start_time = self.start_time
         grpc_execution.end_time = self.end_time
         grpc_execution.waiting_time = self.waiting_time
-        grpc_execution.processing_time = self.processing_time
         grpc_execution.total_time = self.total_time
         grpc_execution.phases.extend([phase.to_grpc() for phase in self.phases])
         return grpc_execution
@@ -485,8 +461,6 @@ class DataPackage(Generic[T], ThreadSafeClass):
         running (bool):                                 Indicates if the data package is currently being processed.
         start_time (float):                             Timestamp when the data package started processing.
         end_time (float):                               Timestamp when the data package finished processing.
-        total_waiting_time (float):                     Total time spent waiting for the mutex to unlock.
-        total_processing_time (float):                  Total time spent processing the data package.
         total_time (float):                             Total time spent processing the data package.
         success (bool):                                 Indicates if the process was successful.
         errors (List[Optional[Error]]):                 List of errors that occurred during processing.
@@ -499,8 +473,6 @@ class DataPackage(Generic[T], ThreadSafeClass):
     _running: bool = False
     _start_time: float = 0.0
     _end_time: float = 0.0
-    _total_waiting_time: float = 0.0
-    _total_processing_time: float = 0.0
     _total_time: float = 0.0
     _success: bool = True
     _errors: List[Optional[Error]] = field(default_factory=list)
@@ -573,22 +545,6 @@ class DataPackage(Generic[T], ThreadSafeClass):
         self._set_attribute('end_time', value)
     
     @property
-    def total_waiting_time(self) -> float:
-        return self._get_attribute('total_waiting_time')
-    
-    @total_waiting_time.setter
-    def total_waiting_time(self, value: float) -> None:
-        self._set_attribute('total_waiting_time', value)
-    
-    @property
-    def total_processing_time(self) -> float:
-        return self._get_attribute('total_processing_time')
-    
-    @total_processing_time.setter
-    def total_processing_time(self, value: float) -> None:
-        self._set_attribute('total_processing_time', value)
-    
-    @property
     def total_time(self) -> float:
         return self._get_attribute('total_time')
     
@@ -642,8 +598,6 @@ class DataPackage(Generic[T], ThreadSafeClass):
         self.running = grpc_package.running
         self.start_time = grpc_package.start_time
         self.end_time = grpc_package.end_time
-        self.total_waiting_time = grpc_package.total_waiting_time
-        self.total_processing_time = grpc_package.total_processing_time
         self.total_time = grpc_package.total_time
         self.success = grpc_package.success
 
@@ -682,8 +636,6 @@ class DataPackage(Generic[T], ThreadSafeClass):
         grpc_package.running = self.running
         grpc_package.start_time = self.start_time
         grpc_package.end_time = self.end_time
-        grpc_package.total_waiting_time = self.total_waiting_time
-        grpc_package.total_processing_time = self.total_processing_time
         grpc_package.total_time = self.total_time
         grpc_package.success = self.success
         grpc_package.errors.extend([error.to_grpc() for error in self.errors if error])
