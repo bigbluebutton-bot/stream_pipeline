@@ -55,287 +55,42 @@ Modules are the building blocks of the pipeline. They perform specific tasks on 
 
 # Detailed Architecture Description
 ## Pipeline
-```mermaid
-stateDiagram-v2
-    [*] --> Pipeline: Start
+![pipeline](img/pipeline.png)
 
-    state Pipeline {
-
-        [*] --> Controller0_NOT_PARALLEL
-
-        state Controller0_NOT_PARALLEL {
-
-            [*] --> Phase0_C0
-
-            state Phase0_C0 {
-                [*] --> Module0_P0_C0: Start Phase0
-                Module0_P0_C0 --> Module1_P0_C0
-                Module1_P0_C0 --> Module...n_P0_C0
-                Module...n_P0_C0 --> [*]: End Phase0
-            }
-
-            Phase0_C0 --> Phase1_C0
-
-            state Phase1_C0 {
-                [*] --> Module0_P1_C0: Start Phase1
-                Module0_P1_C0 --> Module1_P1_C0
-                Module1_P1_C0 --> Module...n_P1_C0
-                Module...n_P1_C0 --> [*]: End Phase1
-            }
-
-            Phase1_C0 --> Phase...n_C0
-
-            state Phase...n_C0 {
-                [*] --> Module0_P...n_C0: Start Phase...n
-                Module0_P...n_C0 --> Module1_P...n_C0
-                Module1_P...n_C0 --> Module...n_P...n_C0
-                Module...n_P...n_C0 --> [*]: End Phase...n
-            }
-
-            Phase...n_C0 --> [*]
-        }
-
-        Controller0_NOT_PARALLEL --> Controller1_NO_ORDER
-
-        state Controller1_NO_ORDER {
-
-            state fork_state_C0 <<fork>>
-            [*] --> fork_state_C0
-            fork_state_C0 --> Phase0_C1: 0
-            fork_state_C0 --> Phase0_C1: 1
-            fork_state_C0 --> Phase0_C1: ...n
-
-            state Phase0_C1 {
-                [*] --> Module0_P0_C1: Start Phase0
-                Module0_P0_C1 --> Module1_P0_C1
-                Module1_P0_C1 --> Module...n_P0_C1
-                Module...n_P0_C1 --> [*]: End Phase0
-            }
-
-            Phase0_C1 --> Phase1_C1: 0
-            Phase0_C1 --> Phase1_C1: 1
-            Phase0_C1 --> Phase1_C1: ...n
-
-            state Phase1_C1 {
-                [*] --> Module0_P1_C1: Start Phase1
-                Module0_P1_C1 --> Module1_P1_C1
-                Module1_P1_C1 --> Module...n_P1_C1
-                Module...n_P1_C1 --> [*]: End Phase1
-            }
-
-            Phase1_C1 --> Phase...n_C1: 0
-            Phase1_C1 --> Phase...n_C1: 1
-            Phase1_C1 --> Phase...n_C1: ...n
-
-            state Phase...n_C1 {
-                [*] --> Module0_P...n_C1: Start Phase...n
-                Module0_P...n_C1 --> Module1_P...n_C1
-                Module1_P...n_C1 --> Module...n_P...n_C1
-                Module...n_P...n_C1 --> [*]: End Phase...n
-            }
-
-            state join_state_C0 <<join>>
-            Phase...n_C1 --> join_state_C0: 0
-            Phase...n_C1 --> join_state_C0: 1
-            Phase...n_C1 --> join_state_C0: ...n
-            join_state_C0 --> [*]
-        }
-
-        Controller1_NO_ORDER --> Controller2_ORDER_BY_SEQUENCE
-
-        state Controller2_ORDER_BY_SEQUENCE {
-
-            [*] --> Add_Sequence_Number_C2
-
-            state fork_state_C1 <<fork>>
-            Add_Sequence_Number_C2 --> fork_state_C1
-            fork_state_C1 --> Phase0_C2: 0
-            fork_state_C1 --> Phase0_C2: 1
-            fork_state_C1 --> Phase0_C2: ...n
-
-            state Phase0_C2 {
-                [*] --> Module0_P0_C2: Start Phase0
-                Module0_P0_C2 --> Module1_P0_C2
-                Module1_P0_C2 --> Module...n_P0_C2
-                Module...n_P0_C2 --> [*]: End Phase0
-            }
-
-            Phase0_C2 --> Phase1_C2: 0
-            Phase0_C2 --> Phase1_C2: 1
-            Phase0_C2 --> Phase1_C2: ...n
-
-            state Phase1_C2 {
-                [*] --> Module0_P1_C2: Start Phase1
-                Module0_P1_C2 --> Module1_P1_C2
-                Module1_P1_C2 --> Module...n_P1_C2
-                Module...n_P1_C2 --> [*]: End Phase1
-            }
-
-            Phase1_C2 --> Phase...n_C2: 0
-            Phase1_C2 --> Phase...n_C2: 1
-            Phase1_C2 --> Phase...n_C2: ...n
-
-            state Phase...n_C2 {
-                [*] --> Module0_P...n_C2: Start Phase...n
-                Module0_P...n_C2 --> Module1_P...n_C2
-                Module1_P...n_C2 --> Module...n_P...n_C2
-                Module...n_P...n_C2 --> [*]: End Phase...n
-            }
-
-            state join_state_C1 <<join>>
-            Phase...n_C2 --> join_state_C1: 0
-            Phase...n_C2 --> join_state_C1: 1
-            Phase...n_C2 --> join_state_C1: ...n
-            join_state_C1 --> Order_By_Sequence_Number_C2
-            Order_By_Sequence_Number_C2 --> [*]
-        }
-
-        Controller2_ORDER_BY_SEQUENCE --> Controller3_FIRST_WINS
-
-        state Controller3_FIRST_WINS {
-
-            [*] --> Add_Sequence_Number_C3
-
-            state fork_state_C3 <<fork>>
-            Add_Sequence_Number_C3 --> fork_state_C3
-            fork_state_C3 --> Phase0_C3: 0
-            fork_state_C3 --> Phase0_C3: 1
-            fork_state_C3 --> Phase0_C3: ...n
-
-            state Phase0_C3 {
-                [*] --> Module0_P0_C3: Start Phase0
-                Module0_P0_C3 --> Module1_P0_C3
-                Module1_P0_C3 --> Module...n_P0_C3
-                Module...n_P0_C3 --> [*]: End Phase0
-            }
-
-            Phase0_C3 --> Phase1_C3: 0
-            Phase0_C3 --> Phase1_C3: 1
-            Phase0_C3 --> Phase1_C3: ...n
-
-            state Phase1_C3 {
-                [*] --> Module0_P1_C3: Start Phase1
-                Module0_P1_C3 --> Module1_P1_C3
-                Module1_P1_C3 --> Module...n_P1_C3
-                Module...n_P1_C3 --> [*]: End Phase1
-            }
-
-            Phase1_C3 --> Phase...n_C3: 0
-            Phase1_C3 --> Phase...n_C3: 1
-            Phase1_C3 --> Phase...n_C3: ...n
-
-            state Phase...n_C3 {
-                [*] --> Module0_P...n_C3: Start Phase...n
-                Module0_P...n_C3 --> Module1_P...n_C3
-                Module1_P...n_C3 --> Module...n_P...n_C3
-                Module...n_P...n_C3 --> [*]: End Phase...n
-            }
-
-            state join_state_C2 <<join>>
-            Phase...n_C3 --> join_state_C2: 0
-            Phase...n_C3 --> join_state_C2: 1
-            Phase...n_C3 --> join_state_C2: ...n
-            join_state_C2 --> Remove_Older_Then_Last_Sequence_Number_C3
-
-            Remove_Older_Then_Last_Sequence_Number_C3 --> [*]
-        }
-
-    }
-
-    Pipeline --> [*]: End
-
-
-```
+## Controller
+![controllers](img/controller.png)
 
 ## Modules
-### ExecutionModule
-Executes code to modify or process the data.
+### AbstractModule
+Inherits from this class to create your own module.
+![execution_module](img/module.png)
 
-```mermaid
-stateDiagram-v2
-    [*] --> ExecutionModule
-    state ExecutionModule {
-        [*] --> ExecuteCode
-        ExecuteCode --> [*]
-    }
-    ExecutionModule --> [*]
-```
 
 ### ConditionModule
 Evaluates conditions and routes the data based on the result.
+![condition_module](img/condition_module.png)
 
-```mermaid
-stateDiagram-v2
-    [*] --> ConditionModule
-    state ConditionModule {
-        state if_state <<choice>>
-        [*] --> ConditionCode
-        ConditionCode --> if_state
-        if_state --> TrueModule: If condition is true
-        if_state --> FalseModule : If condition is false
-        TrueModule --> [*]
-        FalseModule --> [*]
-    }
-    ConditionModule --> [*]
-```
 
 ### CombinationModule
 Combines multiple modules into one.
+![combination_module](img/combination_module.png)
 
-```mermaid
-stateDiagram-v2
-    [*] --> CombinationModule
-    state CombinationModule {
-        [*] --> Module0: Start Processing
-        state Module0 {
-            [*] --> ExecuteCode0
-            ExecuteCode0 --> [*]
-        }
-        Module0 --> Module1
-        state Module1 {
-            [*] --> ExecuteCode1
-            ExecuteCode1 --> [*]
-        }
-        Module1 --> Module...n
-        state Module...n {
-            [*] --> ExecuteCode...n
-            ExecuteCode...n --> [*]
-        }
-        Module...n --> [*]
-    }
-    CombinationModule --> [*]
-```
 
 ### ExternalModule
-Moves the execution of a module to an external server.
+Moves the execution of a module to an external server. It uses gRPC to communicate with the external server.
+![external_module](img/external_module.png)
 
-```mermaid
-stateDiagram-v2
-    state Server0 {
-        state Pipeline0 {
-            state Controller0 {
-                state ExternalModule {
-                    [*] --> StartExternalModule
-                    EndExternalModule --> [*]
-                }
-            }
-        }
-    }
-    state Server1 {
-        Receiver --> Module
-        Module --> Sender
-    }
-    StartExternalModule --> Receiver
-    Sender --> EndExternalModule
-```
 
 # Future Plans
 
 ## Scaling the Pipeline
-The pipeline is designed to be scalable, allowing for the distribution of data processing tasks across multiple instances or nodes. This is managed by a Lookaside Load Balancer, which distributes incoming requests to different pipelines based on the current load and availability.
+The pipeline is designed to be scalable, allowing for the distribution of data processing tasks across multiple instances or nodes. At the moment I have two ideas on how to achieve this:
 
-### Lookaside Load Balancer
-The load balancer ensures efficient distribution and management of pipelines and modules, providing a scalable solution to handle varying loads of data streams.
+### Reverse Proxy
+Use the external module with a reverse proxy. So you can create a K3s cluster with a reverse proxy and the external modules. The reverse proxy will distribute the requests to the external modules.
+
+### Lookaside Load Balancer (Just an idea in my head)
+The whole pipeline is managed by a look-aside load balancer which changes the path the packages go through during runtime. The look-aside load balancer can be configured to change the path based on the load of the external modules.
 
 ```mermaid
 flowchart TD
