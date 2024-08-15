@@ -43,9 +43,9 @@ def controller_mode_to_str(mode: ControllerMode) -> str:
         return "UNKNOWN"
 
 class PipelinePhase:
-    def __init__(self, modules: List[Module], name: str = "") -> None:
+    def __init__(self, name: str, modules: List[Module]) -> None:
         self._id: str = f"PP-{uuid.uuid4()}"
-        self._name: str = name if name else self._id
+        self._name: str = name
         self._modules: List[Module] = modules
 
         self._lock = threading.Lock()
@@ -53,10 +53,13 @@ class PipelinePhase:
     def execute(self, data_package: DataPackage, data_package_controller: DataPackagePhaseController) -> None:
         start_time = time.time()
 
+        
+        dp_phase = DataPackagePhase()
         with self._lock:
-            dp_phase = DataPackagePhase()
-            dp_phase.running=True
-            dp_phase.start_time=start_time
+            dp_phase.phase_id=self._id
+            dp_phase.phase_name=self._name
+        dp_phase.running=True
+        dp_phase.start_time=start_time
             
         data_package_controller.phases.append(dp_phase)
 
@@ -207,9 +210,9 @@ class QueueData:
     start_time: float
 
 class PipelineController:
-    def __init__(self, phases: List[PipelinePhase], name: str = "", max_workers: int = 1, queue_size: int = -1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
-        self._id: str = f"PPE-{uuid.uuid4()}"
-        self._name: str = name if name else self._id
+    def __init__(self, name: str, phases: List[PipelinePhase], max_workers: int = 1, queue_size: int = -1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
+        self._id: str = f"C-{uuid.uuid4()}"
+        self._name: str = name
         self._phases: List[PipelinePhase] = phases
         self._mode: ControllerMode = mode
 
@@ -235,9 +238,12 @@ class PipelineController:
         start_time = time.time()
 
         dp_phase_con = DataPackagePhaseController()
-        dp_phase_con.mode=controller_mode_to_str(self._mode)
-        dp_phase_con.workers=self._max_workers
-        dp_phase_con.sequence_number=self._order_tracker.get_next_sequence_number()
+        with self._lock:
+            dp_phase_con.controller_id=self._id
+            dp_phase_con.controller_name=self._name
+            dp_phase_con.mode=controller_mode_to_str(self._mode)
+            dp_phase_con.workers=self._max_workers
+            dp_phase_con.sequence_number=self._order_tracker.get_next_sequence_number()
         dp_phase_con.running=True
         dp_phase_con.start_time=start_time
 
@@ -272,7 +278,6 @@ class PipelineController:
                     threading.current_thread().start_context = start_context # type: ignore
                     
                     try:
-                        start_processing_time = time.time()
                         dp_phase_con.waiting_time = time.time() - start_time
 
                         temp_phases = []
@@ -301,15 +306,19 @@ class PipelineController:
                         self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
                         finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
                         # print(f"C{len(queue_data.data_package.controller)} {len(finished_data_packages)}")
-                        for finished_data_package in finished_data_packages:
-                            if finished_data_package.success:
-                                callback(finished_data_package)
-                            elif len(finished_data_package.errors) == 0:
-                                if exit_callback:
-                                    exit_callback(finished_data_package)
+                        for dp in finished_data_packages:
+                            if dp.success:
+                                callback(dp)
                             else:
-                                if error_callback:
-                                    error_callback(finished_data_package)
+                                dp.end_time = time.time()
+                                dp.total_time = dp.end_time - dp.start_time
+                                dp.running = False
+                                if len(dp.errors) == 0:
+                                    if exit_callback:
+                                        exit_callback(dp)
+                                else:
+                                    if error_callback:
+                                        error_callback(dp)
             except Exception as e:
                 print(exception_to_error(e))
 
@@ -330,8 +339,12 @@ class PipelineController:
                 self._executor.submit(execute_phases)
 
         if popped_value:
+            dp: DataPackage = popped_value.data_package
+            dp.end_time = time.time()
+            dp.total_time = dp.end_time - dp.start_time
+            dp.running = False
             if overflow_callback:
-                overflow_callback(popped_value.data_package)
+                overflow_callback(dp)
         
 
 
@@ -356,15 +369,16 @@ class PipelineController:
             self._order_tracker = order_tracker
 
 class PipelineInstance:
-    def __init__(self, name: str = "") -> None:
+    def __init__(self) -> None:
         self._id: str = f"PI-{uuid.uuid4()}"
-        self._name: str = name if name else self._id
         self._controller_queue: Dict[str, List[PipelineController]] = {}
 
         self._lock = threading.Lock()
 
-    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, overflow_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
-        dp.pipeline_instance_id = self._id
+    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, overflow_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
+        
+        with self._lock:
+            dp.pipeline_instance_id = self._id
 
         self._controller_queue[dp.id] = controllers.copy()
 
@@ -404,10 +418,6 @@ class PipelineInstance:
     def get_id(self) -> str:
         with self._lock:
             return self._id
-        
-    def get_name(self) -> str:
-        with self._lock:
-            return self._name
 
 T = TypeVar('T')
 
@@ -441,7 +451,7 @@ class Pipeline(Generic[T]):
             for c_or_p in controllers_or_phases:
                 if isinstance(c_or_p, PipelinePhase):
                     phase_list = [c_or_p]
-                    temp_controllers.append(PipelineController(phase_list))
+                    temp_controllers.append(PipelineController(self._name + "-Controller", phase_list))
                 else:
                     temp_controllers.append(c_or_p)
         
@@ -459,7 +469,7 @@ class Pipeline(Generic[T]):
                     self._instances_controllers[ex_id].append(copy_con)
 
     def register_instance(self) -> str:
-        ex = PipelineInstance(name=f"")
+        ex = PipelineInstance()
         with self._lock:
             self._pipeline_instances[ex.get_id()] = ex
             self._instances_controllers[ex.get_id()] = []
@@ -488,7 +498,9 @@ class Pipeline(Generic[T]):
 
         # Put data into DataPackage
         dp = DataPackage[T]()
-        dp.pipeline_id=self._id
+        with self._lock:
+            dp.pipeline_id=self._id
+            dp.pipeline_name=self._name
         dp.pipeline_instance_id=instance_id
         dp.data=data
         dp.start_time=time.time()

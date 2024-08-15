@@ -15,7 +15,9 @@ class DataPackageModule(ThreadSafeClass):
     Represents metadata for a module that has processed a data package.
     
     Attributes:
-        id (str):                               ID of the module.
+        id (str):                               ID of the DP module.
+        module_id (str):                        ID of the module.
+        module_name (str):                      Name of the module.
         running (bool):                         Indicates if the module is currently running.
         start_time (float):                     Timestamp when the module started.
         end_time (float):                       Timestamp when the module finished.
@@ -26,7 +28,9 @@ class DataPackageModule(ThreadSafeClass):
         success (bool):                         Indicates if the processing was successful.
         error (Union[Exception, Error, None]):  Error encountered during processing, if any.
     """
-    _id: str = field(default_factory=lambda: "Module-" + str(uuid.uuid4()))
+    _id: str = field(default_factory=lambda: "DP-M-" + str(uuid.uuid4()))
+    _module_id: str = ""
+    _module_name: str = ""
     _running: bool = False
     _start_time: float = 0.0
     _end_time: float = 0.0
@@ -46,6 +50,22 @@ class DataPackageModule(ThreadSafeClass):
     @id.setter
     def id(self, value: str) -> None:
         self._set_attribute('id', value)
+    
+    @property
+    def module_id(self) -> str:
+        return self._get_attribute('module_id')
+    
+    @module_id.setter
+    def module_id(self, value: str) -> None:
+        self._set_attribute('module_id', value)
+    
+    @property
+    def module_name(self) -> str:
+        return self._get_attribute('module_name')
+    
+    @module_name.setter
+    def module_name(self, value: str) -> None:
+        self._set_attribute('module_name', value)
     
     @property
     def running(self) -> bool:
@@ -129,6 +149,8 @@ class DataPackageModule(ThreadSafeClass):
         self._ThreadSafeClass__immutable_attributes = []
 
         self.id = grpc_module.id
+        self.module_id = grpc_module.module_id
+        self.module_name = grpc_module.module_name
         self.running = grpc_module.running
         self.start_time = grpc_module.start_time
         self.end_time = grpc_module.end_time
@@ -162,6 +184,8 @@ class DataPackageModule(ThreadSafeClass):
         """
         grpc_module = data_pb2.DataPackageModule()
         grpc_module.id = self.id
+        grpc_module.module_id = self.module_id
+        grpc_module.module_name = self.module_name
         grpc_module.running = self.running
         grpc_module.start_time = self.start_time
         grpc_module.end_time = self.end_time
@@ -185,14 +209,18 @@ class DataPackagePhase(ThreadSafeClass):
     Represents metadata for a phase that has processed a data package.
     
     Attributes:
-        id (str):                           ID of the phase.
+        id (str):                           ID of the DP phase.
+        phase_id (str):                     ID of the phase.
+        phase_name (str):                   Name of the phase.
         running (bool):                     Indicates if the phase is currently running.
         start_time (float):                 Timestamp when the phase started.
         end_time (float):                   Timestamp when the phase finished.
         total_time (float):                 Total time spent on the phase.
         modules (List[DataPackageModule]):  List of modules that processed the data package.
     """
-    _id: str = field(default_factory=lambda: "Phase-" + str(uuid.uuid4()))
+    _id: str = field(default_factory=lambda: "DP-PP-" + str(uuid.uuid4()))
+    _phase_id: str = ""
+    _phase_name: str = ""
     _running: bool = False
     _start_time: float = 0.0
     _end_time: float = 0.0
@@ -209,6 +237,22 @@ class DataPackagePhase(ThreadSafeClass):
     @id.setter
     def id(self, value: str) -> None:
         self._set_attribute('id', value)
+    
+    @property
+    def phase_id(self) -> str:
+        return self._get_attribute('phase_id')
+    
+    @phase_id.setter
+    def phase_id(self, value: str) -> None:
+        self._set_attribute('phase_id', value)
+    
+    @property
+    def phase_name(self) -> str:
+        return self._get_attribute('phase_name')
+    
+    @phase_name.setter
+    def phase_name(self, value: str) -> None:
+        self._set_attribute('phase_name', value)
     
     @property
     def running(self) -> bool:
@@ -258,6 +302,8 @@ class DataPackagePhase(ThreadSafeClass):
         self._ThreadSafeClass__immutable_attributes = []
 
         self.id = grpc_phase.id
+        self.phase_id = grpc_phase.phase_id
+        self.phase_name = grpc_phase.phase_name
         self.running = grpc_phase.running
         self.start_time = grpc_phase.start_time
         self.end_time = grpc_phase.end_time
@@ -281,6 +327,8 @@ class DataPackagePhase(ThreadSafeClass):
         """
         grpc_phase = data_pb2.DataPackagePhase()
         grpc_phase.id = self.id
+        grpc_phase.phase_id = self.phase_id
+        grpc_phase.phase_name = self.phase_name
         grpc_phase.running = self.running
         grpc_phase.start_time = self.start_time
         grpc_phase.end_time = self.end_time
@@ -295,7 +343,9 @@ class DataPackagePhaseController(ThreadSafeClass):
     Represents metadata for a phase execution that has processed a data package.
     
     Attributes:
-        id (str):                           ID of the phase controller.
+        id (str):                           ID of the DP controller
+        controller_id (str):                ID of the controller.
+        controller_name (str):              Name of the controller.
         mode (str):                         Type of phase execution (e.g., NOT_PARALLEL, ORDER_BY_SEQUENCE, FIRST_WINS, NO_ORDER).
         workers (int):                      Number of workers used for executing phases in parallel. 0 means no multi-threading.
         sequence_number (int):              Sequence number of the data package.
@@ -306,7 +356,9 @@ class DataPackagePhaseController(ThreadSafeClass):
         total_time (float):                 Total time spent on phase execution.
         phases (List[DataPackagePhase]):    List of phases that processed the data package.
     """
-    _id: str = field(default_factory=lambda: "Controller-" + str(uuid.uuid4()))
+    _id: str = field(default_factory=lambda: "DP-C-" + str(uuid.uuid4()))
+    _controller_id: str = ""
+    _controller_name: str = ""
     _mode: str = "NOT_PARALLEL"
     _workers: int = 1
     _sequence_number: int = -1
@@ -326,6 +378,22 @@ class DataPackagePhaseController(ThreadSafeClass):
     @id.setter
     def id(self, value: str) -> None:
         self._set_attribute('id', value)
+    
+    @property
+    def controller_id(self) -> str:
+        return self._get_attribute('controller_id')
+    
+    @controller_id.setter
+    def controller_id(self, value: str) -> None:
+        self._set_attribute('controller_id', value)
+    
+    @property
+    def controller_name(self) -> str:
+        return self._get_attribute('controller_name')
+    
+    @controller_name.setter
+    def controller_name(self, value: str) -> None:
+        self._set_attribute('controller_name', value)
     
     @property
     def mode(self) -> str:
@@ -407,6 +475,8 @@ class DataPackagePhaseController(ThreadSafeClass):
         self._ThreadSafeClass__immutable_attributes = []
 
         self.id = grpc_execution.id
+        self.controller_id = grpc_execution.controller_id
+        self.controller_name = grpc_execution.controller_name
         self.mode = grpc_execution.mode
         self.workers = grpc_execution.workers
         self.sequence_number = grpc_execution.sequence_number
@@ -434,6 +504,8 @@ class DataPackagePhaseController(ThreadSafeClass):
         """
         grpc_execution = data_pb2.DataPackagePhaseController()
         grpc_execution.id = self.id
+        grpc_execution.controller_id = self.controller_id
+        grpc_execution.controller_name = self.controller_name
         grpc_execution.mode = self.mode
         grpc_execution.workers = self.workers
         grpc_execution.sequence_number = self.sequence_number
@@ -453,8 +525,9 @@ class DataPackage(Generic[T], ThreadSafeClass):
     Represents the data and metadata for a pipeline process, passed through the pipeline and between modules.
     
     Attributes:
-        id (str):                                       Unique identifier for the data package. Immutable.
+        id (str):                                       ID of the data package.
         pipeline_id (str):                              ID of the pipeline handling this package.
+        pipeline_name (str):                            Name of the pipeline handling this package.
         pipeline_instance_id (str):                     ID of the pipeline instance handling this package.
         controller (List[DataPackagePhaseController]):  List of phases processed in the mode of execution.
         data (Optional[T]):                             Actual data contained in the package.
@@ -467,6 +540,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
     """
     _id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
     _pipeline_id: str = ""
+    _pipeline_name: str = ""
     _pipeline_instance_id: str = ""
     _controller: List[DataPackagePhaseController] = field(default_factory=list)
     _data: Optional[T] = None
@@ -495,6 +569,14 @@ class DataPackage(Generic[T], ThreadSafeClass):
     @pipeline_id.setter
     def pipeline_id(self, value: str) -> None:
         self._set_attribute('pipeline_id', value)
+    
+    @property
+    def pipeline_name(self) -> str:
+        return self._get_attribute('pipeline_name')
+    
+    @pipeline_name.setter
+    def pipeline_name(self, value: str) -> None:
+        self._set_attribute('pipeline_name', value)
     
     @property
     def pipeline_instance_id(self) -> str:
@@ -582,6 +664,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
 
         self.id = grpc_package.id
         self.pipeline_id = grpc_package.pipeline_id
+        self.pipeline_name = grpc_package.pipeline_name
         self.pipeline_instance_id = grpc_package.pipeline_instance_id
 
         existing_phases = {phase.id: phase for phase in self.controller}
@@ -619,6 +702,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
         """
         grpc_package = data_pb2.DataPackage()
         grpc_package.id = self.id
+        grpc_package.pipeline_name = self.pipeline_name
         grpc_package.pipeline_id = self.pipeline_id
         grpc_package.pipeline_instance_id = self.pipeline_instance_id
         grpc_package.controller.extend([phase.to_grpc() for phase in self.controller])

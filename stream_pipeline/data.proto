@@ -21,10 +21,12 @@ message Error {
 // DataPackageModule message definition
 message DataPackageModule {
     string id = 1;
-    bool running = 2;
-    double start_time = 3;
-    double end_time = 4;
-    double waiting_time = 5;
+    string module_id = 2;
+    string module_name = 3;
+    bool running = 4;
+    double start_time = 5;
+    double end_time = 6;
+    double waiting_time = 7;
     double total_time = 8;
     repeated DataPackageModule sub_modules = 9;
     string message = 10;
@@ -35,37 +37,42 @@ message DataPackageModule {
 // DataPackagePhase message definition
 message DataPackagePhase {
     string id = 1;
-    bool running = 2;
-    double start_time = 3;
-    double end_time = 4;
-    double total_time = 5;
-    repeated DataPackageModule modules = 6;
+    string phase_id = 2;
+    string phase_name = 3;
+    bool running = 4;
+    double start_time = 5;
+    double end_time = 6;
+    double total_time = 7;
+    repeated DataPackageModule modules = 8;
 }
 
 // DataPackagePhaseController message definition
 message DataPackagePhaseController {
     string id = 1;
-    string mode = 2;
-    int32 workers = 3;
-    int32 sequence_number = 4;
-    bool running = 5;
-    double start_time = 6;
-    double end_time = 7;
-    double waiting_time = 8;
-    double total_time = 9;
-    repeated DataPackagePhase phases = 10;
+    string controller_id = 2;
+    string controller_name = 3;
+    string mode = 4;
+    int32 workers = 5;
+    int32 sequence_number = 6;
+    bool running = 7;
+    double start_time = 8;
+    double end_time = 9;
+    double waiting_time = 10;
+    double total_time = 11;
+    repeated DataPackagePhase phases = 12;
 }
 
 // DataPackage message definition
 message DataPackage {
     string id = 1;
     string pipeline_id = 2;
-    string pipeline_instance_id = 3;
-    repeated DataPackagePhaseController controller = 4;
-    bytes data = 5;
-    bool running = 6;
-    double start_time = 7;
-    double end_time = 8;
+    string pipeline_name = 3;
+    string pipeline_instance_id = 4;
+    repeated DataPackagePhaseController controller = 5;
+    bytes data = 6;
+    bool running = 7;
+    double start_time = 8;
+    double end_time = 9;
     double total_time = 10;
     bool success = 11;
     repeated Error errors = 12;

@@ -85,13 +85,15 @@ def main() -> None:
                 dpm.message = "Random exit: failure"
 
     # Setting up the processing pipeline
-    phases = [
+    controller = [
         PipelineController(
             mode=ControllerMode.ORDER_BY_SEQUENCE,
             max_workers=10,
-            name="phase1",
+            name="controller1",
             phases=[
-                PipelinePhase([
+                PipelinePhase(
+                    name="c1-phase1",
+                    modules=[
                     DataValidationModule(),
                 ]),
             ],
@@ -99,9 +101,11 @@ def main() -> None:
         PipelineController(
             mode=ControllerMode.NOT_PARALLEL,
             max_workers=10,
-            name="phase2",
+            name="controller2",
             phases=[
-                PipelinePhase([
+                PipelinePhase(
+                    name="c2-phase1",
+                    modules=[
                     DataConditionModule(SuccessModule(), FailureModule()),
                     RandomExit(),
                 ]),
@@ -111,9 +115,11 @@ def main() -> None:
             mode=ControllerMode.ORDER_BY_SEQUENCE,
             max_workers=4,
             queue_size=2,
-            name="phase3",
+            name="controller3",
             phases=[
-                PipelinePhase([
+                PipelinePhase(
+                    name="c3-phase1",
+                    modules=[
                     CombinationModule([
                         CombinationModule([
                             DataTransformationModule(),
@@ -129,7 +135,7 @@ def main() -> None:
         ),
     ]
 
-    pipeline = Pipeline[Data](phases, "test-pipeline")
+    pipeline = Pipeline[Data](name="test-pipeline", controllers_or_phases=controller)
     pip_ex_id = pipeline.register_instance()
 
     counter = 0

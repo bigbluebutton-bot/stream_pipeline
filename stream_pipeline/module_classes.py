@@ -41,7 +41,7 @@ class Module(ABC):
 
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
         self._id = "M-" + self.__class__.__name__ + "-" + str(uuid.uuid4()) 
-        self._name = name if name else self._id
+        self._name = name if name else "M-" + self.__class__.__name__
         self._use_mutex = options.use_mutex
         self._timeout = options.timeout if options.timeout > 0.0 else None
 
@@ -66,7 +66,9 @@ class Module(ABC):
         Measures and records the execution time and waiting time.
         """
         dpm = DataPackageModule()
-        dpm.id=self._id
+        with self._mutex:
+            dpm.module_id=self._id
+            dpm.module_name=self._name
         dpm.running=True
         dpm.start_time=0.0
         dpm.end_time=0.0
