@@ -20,13 +20,13 @@ class _ServicerContext(grpc.ServicerContext, grpc.aio.ServicerContext):  # type:
 class ModuleServiceStub:
     def __init__(self, channel: typing.Union[grpc.Channel, grpc.aio.Channel]) -> None: ...
     run: grpc.UnaryUnaryMultiCallable[
-        data_pb2.RequestDPandDPM,
+        data_pb2.RequestDP,
         data_pb2.ReturnDPandError,
     ]
 
 class ModuleServiceAsyncStub:
     run: grpc.aio.UnaryUnaryMultiCallable[
-        data_pb2.RequestDPandDPM,
+        data_pb2.RequestDP,
         data_pb2.ReturnDPandError,
     ]
 
@@ -34,7 +34,7 @@ class ModuleServiceServicer(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def run(
         self,
-        request: data_pb2.RequestDPandDPM,
+        request: data_pb2.RequestDP,
         context: _ServicerContext,
     ) -> typing.Union[data_pb2.ReturnDPandError, collections.abc.Awaitable[data_pb2.ReturnDPandError]]: ...
 

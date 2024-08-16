@@ -97,7 +97,7 @@ class PipelinePhase:
         data_package_controller.phases.append(dp_phase)
 
         for module in self._modules:
-            module.run(data_package=data_package, phase=dp_phase)
+            module.run(dp=data_package, dpc=data_package_controller, dpp=dp_phase)
             if not data_package.success:
                 break
 
@@ -487,6 +487,8 @@ class PipelineInstance:
 
         def new_callback(dp: DataPackage) -> None:
             left_phases = []
+            # if not dp.id in self._controller_queue:
+            #     return
             for controller in self._controller_queue[dp.id]:
                 left_phases.append(controller._name)
 

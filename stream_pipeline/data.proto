@@ -78,9 +78,11 @@ message DataPackage {
     repeated Error errors = 12;
 }
 
-message RequestDPandDPM {
+message RequestDP {
     DataPackage data_package = 1;
-    DataPackageModule data_package_module = 2;
+    string data_package_controller_id = 2;
+    string data_package_phase_id = 3;
+    string data_package_module_id = 4;
 }
 
 message ReturnDPandError {
@@ -89,5 +91,5 @@ message ReturnDPandError {
 }
 
 service ModuleService {
-    rpc run (RequestDPandDPM) returns (ReturnDPandError);
+    rpc run (RequestDP) returns (ReturnDPandError);
 }

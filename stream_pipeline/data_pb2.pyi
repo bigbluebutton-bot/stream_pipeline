@@ -327,25 +327,30 @@ class DataPackage(google.protobuf.message.Message):
 global___DataPackage = DataPackage
 
 @typing.final
-class RequestDPandDPM(google.protobuf.message.Message):
+class RequestDP(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     DATA_PACKAGE_FIELD_NUMBER: builtins.int
-    DATA_PACKAGE_MODULE_FIELD_NUMBER: builtins.int
+    DATA_PACKAGE_CONTROLLER_ID_FIELD_NUMBER: builtins.int
+    DATA_PACKAGE_PHASE_ID_FIELD_NUMBER: builtins.int
+    DATA_PACKAGE_MODULE_ID_FIELD_NUMBER: builtins.int
+    data_package_controller_id: builtins.str
+    data_package_phase_id: builtins.str
+    data_package_module_id: builtins.str
     @property
     def data_package(self) -> global___DataPackage: ...
-    @property
-    def data_package_module(self) -> global___DataPackageModule: ...
     def __init__(
         self,
         *,
         data_package: global___DataPackage | None = ...,
-        data_package_module: global___DataPackageModule | None = ...,
+        data_package_controller_id: builtins.str = ...,
+        data_package_phase_id: builtins.str = ...,
+        data_package_module_id: builtins.str = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["data_package", b"data_package", "data_package_module", b"data_package_module"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["data_package", b"data_package", "data_package_module", b"data_package_module"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["data_package", b"data_package"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["data_package", b"data_package", "data_package_controller_id", b"data_package_controller_id", "data_package_module_id", b"data_package_module_id", "data_package_phase_id", b"data_package_phase_id"]) -> None: ...
 
-global___RequestDPandDPM = RequestDPandDPM
+global___RequestDP = RequestDP
 
 @typing.final
 class ReturnDPandError(google.protobuf.message.Message):
