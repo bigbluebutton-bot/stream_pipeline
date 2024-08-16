@@ -238,7 +238,8 @@ class DataPackageController(google.protobuf.message.Message):
     RUNNING_FIELD_NUMBER: builtins.int
     START_TIME_FIELD_NUMBER: builtins.int
     END_TIME_FIELD_NUMBER: builtins.int
-    WAITING_TIME_FIELD_NUMBER: builtins.int
+    INPUT_WAITING_TIME_FIELD_NUMBER: builtins.int
+    OUTPUT_WAITING_TIME_FIELD_NUMBER: builtins.int
     TOTAL_TIME_FIELD_NUMBER: builtins.int
     PHASES_FIELD_NUMBER: builtins.int
     id: builtins.str
@@ -250,7 +251,8 @@ class DataPackageController(google.protobuf.message.Message):
     running: builtins.bool
     start_time: builtins.float
     end_time: builtins.float
-    waiting_time: builtins.float
+    input_waiting_time: builtins.float
+    output_waiting_time: builtins.float
     total_time: builtins.float
     @property
     def phases(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___DataPackagePhase]: ...
@@ -266,11 +268,12 @@ class DataPackageController(google.protobuf.message.Message):
         running: builtins.bool = ...,
         start_time: builtins.float = ...,
         end_time: builtins.float = ...,
-        waiting_time: builtins.float = ...,
+        input_waiting_time: builtins.float = ...,
+        output_waiting_time: builtins.float = ...,
         total_time: builtins.float = ...,
         phases: collections.abc.Iterable[global___DataPackagePhase] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["controller_id", b"controller_id", "controller_name", b"controller_name", "end_time", b"end_time", "id", b"id", "mode", b"mode", "phases", b"phases", "running", b"running", "sequence_number", b"sequence_number", "start_time", b"start_time", "total_time", b"total_time", "waiting_time", b"waiting_time", "workers", b"workers"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["controller_id", b"controller_id", "controller_name", b"controller_name", "end_time", b"end_time", "id", b"id", "input_waiting_time", b"input_waiting_time", "mode", b"mode", "output_waiting_time", b"output_waiting_time", "phases", b"phases", "running", b"running", "sequence_number", b"sequence_number", "start_time", b"start_time", "total_time", b"total_time", "workers", b"workers"]) -> None: ...
 
 global___DataPackageController = DataPackageController
 

@@ -57,9 +57,10 @@ message DataPackageController {
     bool running = 7;
     double start_time = 8;
     double end_time = 9;
-    double waiting_time = 10;
-    double total_time = 11;
-    repeated DataPackagePhase phases = 12;
+    double input_waiting_time = 10;
+    double output_waiting_time = 11;
+    double total_time = 12;
+    repeated DataPackagePhase phases = 13;
 }
 
 // DataPackage message definition

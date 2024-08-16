@@ -31,10 +31,12 @@ CONTROLLER_EXIT_FLOWRATE = Counter("controller_exit_flowrate", "The flowrate of 
 CONTROLLER_OVERFLOW_FLOWRATE = Counter("controller_overflow_flowrate", "The flowrate of the controller overflow", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_ERROR_FLOWRATE = Counter("controller_error_flowrate", "The flowrate of the controller error", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 
-CONTROLLER_WAITING_TIME = Summary("controller_waiting_time", "The time a DP has to wait before being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_INPUT_WAITING_TIME = Summary("controller_input_waiting_time", "The waiting time of the controller input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OUTPUT_WAITING_TIME = Summary("controller_output_waiting_time", "The waiting time of the controller output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_TOTAL_TIME = Summary("controller_total_time", "The total time of the controller", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 
-CONTROLLER_WAITING_COUNTER = Gauge("controller_waiting_counter", "The number of data packages waiting to be processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_INPUT_WAITING_COUNTER = Gauge("controller_input_waiting_counter", "The number of data packages waiting to be processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OUTPUT_WAITING_COUNTER = Gauge("controller_output_waiting_counter", "The number of data packages waiting to be output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_PROCESSING_COUNT = Gauge("controller_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 
 
@@ -314,7 +316,7 @@ class PipelineController:
                         continue
 
                     with self._lock:
-                        CONTROLLER_WAITING_COUNTER.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).dec()
+                        CONTROLLER_INPUT_WAITING_COUNTER.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).dec()
                         CONTROLLER_PROCESSING_COUNT.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).inc()
 
 
@@ -330,9 +332,9 @@ class PipelineController:
                     
                     try:
                         waiting_time = time.time() - start_time
-                        dp_phase_con.waiting_time = waiting_time
+                        dp_phase_con.input_waiting_time = waiting_time
                         with self._lock:
-                            CONTROLLER_WAITING_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).observe(waiting_time)
+                            CONTROLLER_INPUT_WAITING_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).observe(waiting_time)
 
                         temp_phases = []
                         with self._lock:
@@ -350,16 +352,31 @@ class PipelineController:
                         data_package.success = False
                         data_package.errors.append(exception_to_error(e))
 
-
+                    dp_phase_con.end_time = time.time() # This will set the end time temporarily (bad code). It will be overriden in the next block.
+                    CONTROLLER_OUTPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
                     with self._order_tracker.instance_lock:
                         # print(f"C{len(queue_data.data_package.controller)} Finished {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
                         self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
                         finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
                         # print(f"C{len(queue_data.data_package.controller)} {len(finished_data_packages)}")
                         for dp in finished_data_packages:
+                            # find controller in dp.controllers with id self._id
+                            con: Optional[DataPackageController] = None
+                            for co in dp.controllers:
+                                if co.controller_id == self._id:
+                                    con = co
+                                    break
+                            if con is None:
+                                raise ValueError("Controller not found in DataPackage.")
+                            
                             end_time = time.time()
                             total_time = end_time - dp.start_time
-                            dp.total_time = total_time
+                            output_waiting_time = end_time - con.end_time # This is why the end time was temporarily set.
+                            con.output_waiting_time = output_waiting_time
+                            con.end_time = end_time # This is where the end time will be overriden. (bad code)
+                            con.total_time = total_time
+                            CONTROLLER_OUTPUT_WAITING_TIME.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).observe(output_waiting_time)
+                            CONTROLLER_OUTPUT_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
                             
                             with self._lock:
                                 if dp.success:
@@ -385,7 +402,7 @@ class PipelineController:
 
             # print(f"C{len(data_package.controller)} Put in Queue: {data_package.data}")
             with self._lock:
-                CONTROLLER_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
+                CONTROLLER_INPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
             
             self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time))
 
@@ -401,7 +418,7 @@ class PipelineController:
             dp: DataPackage = popped_value.data_package
             with self._lock:
                 CONTROLLER_OVERFLOW_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
-                CONTROLLER_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
+                CONTROLLER_INPUT_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
             overflow_callback(dp)
         
 

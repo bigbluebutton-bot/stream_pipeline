@@ -352,7 +352,8 @@ class DataPackageController(ThreadSafeClass):
         running (bool):                     Indicates if the phase execution is currently running.
         start_time (float):                 Timestamp when the phase execution started.
         end_time (float):                   Timestamp when the phase execution finished.
-        waiting_time (float):               Time spent waiting for the thread pool to unlock.
+        _input_waiting_time (float):        Time waiting for teh data package to be processed.
+        _output_waiting_time (float):       Time waiting for the data package to be output. Maybe because of sorting. (mode)
         total_time (float):                 Total time spent on phase execution.
         phases (List[DataPackagePhase]):    List of phases that processed the data package.
     """
@@ -365,7 +366,8 @@ class DataPackageController(ThreadSafeClass):
     _running: bool = False
     _start_time: float = 0.0
     _end_time: float = 0.0
-    _waiting_time: float = 0.0
+    _input_waiting_time: float = 0.0
+    _output_waiting_time: float = 0.0
     _total_time: float = 0.0
     _phases: List[DataPackagePhase] = field(default_factory=list)
     
@@ -444,12 +446,20 @@ class DataPackageController(ThreadSafeClass):
         self._set_attribute('end_time', value)
     
     @property
-    def waiting_time(self) -> float:
-        return self._get_attribute('waiting_time')
+    def input_waiting_time(self) -> float:
+        return self._get_attribute('input_waiting_time')
     
-    @waiting_time.setter
-    def waiting_time(self, value: float) -> None:
-        self._set_attribute('waiting_time', value)
+    @input_waiting_time.setter
+    def input_waiting_time(self, value: float) -> None:
+        self._set_attribute('input_waiting_time', value)
+        
+    @property
+    def output_waiting_time(self) -> float:
+        return self._get_attribute('output_waiting_time')
+    
+    @output_waiting_time.setter
+    def output_waiting_time(self, value: float) -> None:
+        self._set_attribute('output_waiting_time', value)
     
     @property
     def total_time(self) -> float:
@@ -483,7 +493,8 @@ class DataPackageController(ThreadSafeClass):
         self.running = grpc_execution.running
         self.start_time = grpc_execution.start_time
         self.end_time = grpc_execution.end_time
-        self.waiting_time = grpc_execution.waiting_time
+        self.input_waiting_time = grpc_execution.input_waiting_time
+        self.output_waiting_time = grpc_execution.output_waiting_time
         self.total_time = grpc_execution.total_time
 
         existing_phases = {phase.id: phase for phase in self.phases}
@@ -512,7 +523,8 @@ class DataPackageController(ThreadSafeClass):
         grpc_execution.running = self.running
         grpc_execution.start_time = self.start_time
         grpc_execution.end_time = self.end_time
-        grpc_execution.waiting_time = self.waiting_time
+        grpc_execution.input_waiting_time = self.input_waiting_time
+        grpc_execution.output_waiting_time = self.output_waiting_time
         grpc_execution.total_time = self.total_time
         grpc_execution.phases.extend([phase.to_grpc() for phase in self.phases])
         return grpc_execution
@@ -529,7 +541,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
         pipeline_id (str):                              ID of the pipeline handling this package.
         pipeline_name (str):                            Name of the pipeline handling this package.
         pipeline_instance_id (str):                     ID of the pipeline instance handling this package.
-        controllers (List[DataPackageController]): List of phases processed in the mode of execution.
+        controllers (List[DataPackageController]):      List of phases processed in the mode of execution.
         data (Optional[T]):                             Actual data contained in the package.
         running (bool):                                 Indicates if the data package is currently being processed.
         start_time (float):                             Timestamp when the data package started processing.
