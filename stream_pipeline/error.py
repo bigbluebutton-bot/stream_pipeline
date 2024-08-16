@@ -5,7 +5,7 @@ import threading
 import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Dict, List, NamedTuple, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Union
 import uuid
 
 from . import data_pb2
@@ -216,7 +216,7 @@ class ErrorLoggerOptions(NamedTuple):
     module_versions: bool = False
 
 class ErrorLogger:
-    _instance = None # type: ignore
+    _instance: Optional['ErrorLogger'] = None
     _lock = threading.Lock()
 
     def __new__(cls) -> 'ErrorLogger':

@@ -2,26 +2,28 @@
 import copy
 from abc import ABC, abstractmethod
 import threading
-from typing import  Any, Dict, List, Tuple, Union, final, NamedTuple
+from typing import  Any, Dict, List, Optional, Tuple, Union, final, NamedTuple
 import time
 import uuid
-import grpc # type: ignore
-from prometheus_client import Gauge, Summary
+import grpc
+from prometheus_client import Gauge, Summary, Counter
 
 from . import data_pb2
 from . import data_pb2_grpc
 from .error import Error, exception_to_error
-from .data_package import DataPackage, DataPackageModule, DataPackagePhase
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController
 
 # Metrics to track time spent on processing modules
-MODULE_PROCESSING_TIME = Summary('module_processing_seconds', 'Time spent processing module', ['module_name'])
-MODULE_PROCESSING_TIME_WITHOUT_ERROR = Summary('module_processing_seconds_without_error', 'Time spent processing module without error', ['module_name'])
-MODULE_PROCESSING_COUNTER = Gauge('module_processing_counter', 'Number of processes executing the module at the moment', ['module_name'])
-MODULE_WAITING_TIME = Summary('module_waiting_seconds', 'Time spent waiting before executing the task (mutex)', ['module_name'])
-MODULE_TOTAL_TIME = Summary('module_total_seconds', 'Total time spent processing module', ['module_name'])
-MODULE_TOTAL_TIME_WITHOUT_ERROR = Summary('module_total_seconds_without_error', 'Total time spent processing module without error', ['module_name'])
-MODULE_WAITING_COUNTER = Gauge('module_waiting_counter', 'Number of processes waiting to execute the task (mutex)', ['module_name'])
-MODULE_ERROR_COUNTER = Gauge('module_error_counter', 'Number of errors encountered by the module', ['module_name'])
+MODULE_INPUT_FLOWRATE = Counter("module_input_flowrate", "The flowrate of the module input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_OUTPUT_FLOWRATE = Counter("module_output_flowrate", "The flowrate of the module output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_EXIT_FLOWRATE = Counter("module_exit_flowrate", "The flowrate of the module exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_ERROR_FLOWRATE = Counter("module_error_flowrate", "The flowrate of the module errors", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+
+MODULE_WAITING_TIME = Summary("module_waiting_time", "Time spent waiting for a module to execute", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_TOTAL_TIME = Summary("module_total_time", "Total time spent executing a module", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+
+MODULE_WAITING_COUNTER = Gauge("module_waiting_counter", "Number of modules waiting to execute", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_PROCESSING_COUNTER = Gauge("module_processing_counter", "Number of modules currently executing", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
 
 class ModuleOptions(NamedTuple):
     """
@@ -41,7 +43,7 @@ class Module(ABC):
 
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
         self._id = "M-" + self.__class__.__name__ + "-" + str(uuid.uuid4()) 
-        self._name = name if name else self._id
+        self._name = name if name else "M-" + self.__class__.__name__
         self._use_mutex = options.use_mutex
         self._timeout = options.timeout if options.timeout > 0.0 else None
 
@@ -59,19 +61,29 @@ class Module(ABC):
         if id(self) not in self._locks:
             self._locks[id(self)] = threading.RLock()
         return self._locks[id(self)]
+    
+    def __del__(self) -> None:
+        """
+        Destructor to remove the lock for the module.
+        """
+        if id(self) in self._locks:
+            del self._locks[id(self)]
 
-    def run(self, data_package: DataPackage, parent_module: Union[DataPackageModule, None] = None, phase: Union[DataPackagePhase, None] = None) -> None:
+    def run(self, dp: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, parent_module: Optional[DataPackageModule] = None) -> None:
         """
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
         """
+        
+        MODULE_INPUT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
+        
         dpm = DataPackageModule()
-        dpm.id=self._id
+        dpm.module_id=self._id
+        dpm.module_name=self._name
         dpm.running=True
         dpm.start_time=0.0
         dpm.end_time=0.0
         dpm.waiting_time=0.0
-        dpm.processing_time=0.0
         dpm.total_time=0.0
         dpm.success=True
         dpm.error=None
@@ -80,33 +92,27 @@ class Module(ABC):
         if parent_module:
             parent_module.sub_modules.append(dpm)
         else:
-            if phase:
-                phase.modules.append(dpm)
-            else:
-                raise ValueError("Parent module or phase must be provided.")
+            dpp.modules.append(dpm)
         
-        start_total_time = time.time()
+        start_time = time.time()
+        dpm.start_time = start_time
         waiting_time = 0.0
         if self._use_mutex:
-            MODULE_WAITING_COUNTER.labels(module_name=self.__class__.__name__).inc()
+            MODULE_WAITING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
             self._mutex.acquire()
-            waiting_time = time.time() - start_total_time
+            MODULE_WAITING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).dec()
+            waiting_time = time.time() - start_time
             dpm.waiting_time = waiting_time
-            MODULE_WAITING_TIME.labels(module_name=self.__class__.__name__).observe(waiting_time)
-            MODULE_WAITING_COUNTER.labels(module_name=self.__class__.__name__).dec()
-
-        start_time = time.time()
-        dpm.start_time = start_total_time
+            MODULE_WAITING_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(waiting_time)
         
+        MODULE_PROCESSING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
         # Create a thread to execute the execute method
-        execute_thread = threading.Thread(target=self._execute_with_result, args=(data_package, dpm))
+        execute_thread = threading.Thread(target=self._execute_with_result, args=(dp, dpc, dpp, dpm))
         execute_thread.start_context = threading.current_thread().name # type: ignore
         execute_thread.timed_out = False # type: ignore
-        MODULE_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).inc()
         execute_thread.start()
         execute_thread.join(self._timeout)
         execute_thread.timed_out = True # type: ignore
-        MODULE_PROCESSING_COUNTER.labels(module_name=self.__class__.__name__).dec()
 
         thread_alive = execute_thread.is_alive()
         if thread_alive:
@@ -119,26 +125,24 @@ class Module(ABC):
                     dpm.error = exception_to_error(te)
 
         if not dpm.success:
-            data_package.success = False
+            dp.success = False
             if dpm.error:
-                data_package.errors.append(dpm.error)
-            MODULE_ERROR_COUNTER.labels(module_name=self.__class__.__name__).inc()
+                dp.errors.append(dpm.error)
+
+        if dpm.success:
+            MODULE_OUTPUT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
+        elif not dpm.error:
+            MODULE_EXIT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
+        else:
+            MODULE_ERROR_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
         
         end_time = time.time()
         dpm.end_time = end_time
-        processing_time = end_time - start_time
-        dpm.processing_time = processing_time
-        total_time = end_time - start_total_time
+        total_time = end_time - start_time
         dpm.total_time = total_time
         dpm.running = False
-
-
-        if data_package.success:
-            MODULE_PROCESSING_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(processing_time)
-            MODULE_TOTAL_TIME_WITHOUT_ERROR.labels(module_name=self.__class__.__name__).observe(total_time)
-        
-        MODULE_PROCESSING_TIME.labels(module_name=self.__class__.__name__).observe(processing_time)
-        MODULE_TOTAL_TIME.labels(module_name=self.__class__.__name__).observe(total_time)
+        MODULE_PROCESSING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).dec()
+        MODULE_TOTAL_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(total_time)
         
         if self._use_mutex:
             self._mutex.release()
@@ -147,12 +151,12 @@ class Module(ABC):
         
 
 
-    def _execute_with_result(self, data: DataPackage, dpm: DataPackageModule) -> None:
+    def _execute_with_result(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         """
         Helper method to execute the `execute` method and store the result in a container.
         """
         try:
-            self.execute(data, dpm)
+            self.execute(data, dpc, dpp, dpm)
         except Exception as e:
             current_thread = threading.current_thread()
             if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
@@ -162,7 +166,7 @@ class Module(ABC):
             dpm.error = exception_to_error(e)
 
     @abstractmethod
-    def execute(self, data: DataPackage, data_package_module: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, data_package_controller: DataPackageController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:
         """
         Abstract method to be implemented by subclasses.
         Performs an operation on the data package.
@@ -198,7 +202,7 @@ class ExecutionModule(Module, ABC):
     Abstract class for modules that perform specific execution tasks.
     """
     @abstractmethod
-    def execute(self, data: DataPackage, data_package_module: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, data_package_controller: DataPackageController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:
         """
         Method to be implemented by subclasses for specific execution logic.
         """
@@ -222,14 +226,14 @@ class ConditionModule(Module, ABC):
         return True
 
     @final
-    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         """
         Executes the true_module if condition is met, otherwise executes the false_module.
         """
         if self.condition(data):
-            self.true_module.run(data, dpm)
+            self.true_module.run(data, dpc, dpp, dpm)
         else:
-            self.false_module.run(data, dpm)
+            self.false_module.run(data, dpc, dpp, dpm)
 
 class CombinationModule(Module):
     """
@@ -241,12 +245,12 @@ class CombinationModule(Module):
         self.modules = modules
     
     @final
-    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         """
         Executes each module in the list sequentially, passing the output of one as the input to the next.
         """
         for i, module in enumerate(self.modules):
-            module.run(data, dpm)
+            module.run(data, dpc, dpp, dpm)
             if not data.success:
                 break
 
@@ -261,19 +265,16 @@ class ExternalModule(Module):
         self.port: int = port
 
     @final
-    def execute(self, data: DataPackage, dpm: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         address = f"{self.host}:{self.port}"
         with grpc.insecure_channel(address) as channel:
             stub = data_pb2_grpc.ModuleServiceStub(channel)
             dp_grpc = data.to_grpc()
-            dpm_grpc = dpm.to_grpc()
-            data_grpc = data_pb2.RequestDPandDPM(data_package=dp_grpc, data_package_module=dpm_grpc) # type: ignore
+            dpc_id = dpc.id
+            dpp_id = dpp.id
+            dpm_id = dpm.id
+            data_grpc = data_pb2.RequestDP(data_package=dp_grpc, data_package_controller_id=dpc_id, data_package_phase_id=dpp_id, data_package_module_id=dpm_id)
             response = stub.run(data_grpc)
-
-            # Debugging output
-            # print(f"Type of response.error: {type(response.error)}")
-            # print(f"repr of response.error: {repr(response.error)}")
-            # print(f"Fields of response.error: {response.error.ListFields()}")
 
             if response.error and response.error.ListFields():
                 error = Error()

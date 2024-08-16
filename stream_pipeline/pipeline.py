@@ -11,18 +11,43 @@ import threading
 from typing import Callable, Dict, Generic, List, Optional, Sequence, TypeVar, Union
 from enum import Enum
 import uuid
-from prometheus_client import Gauge, Summary
+from prometheus_client import Gauge, Summary, Counter
 
-from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackagePhaseController
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController
 
-PIPELINE_ERROR_COUNTER = Gauge('pipeline_error_counter', 'Number of errors in the pipeline', ['pipeline_name'])
-PIPELINE_PROCESSING_COUNTER = Gauge('pipeline_processing_counter', 'Number of processes executing the pipline at the moment', ['pipeline_name'])
-PIPELINE_PROCESSING_TIME = Summary('pipeline_processing_time', 'Time spent processing the pipeline', ['pipeline_name'])
-PIPELINE_PROCESSING_TIME_WITHOUT_ERROR = Summary('pipeline_processing_time_without_error', 'Time spent processing the pipeline without error', ['pipeline_name'])
-PIPELINE_WAITING_COUNTER = Gauge('pipeline_waiting_counter', 'Number of processes waiting for the pipline to be executed', ['pipeline_name'])
-PIPELINE_WAITING_TIME = Summary('pipeline_waiting_time', 'Time spent waiting for the pipeline to be executed', ['pipeline_name'])
+PIPELINE_INPUT_FLOWRATE = Counter("pipeline_input_flowrate", "The flowrate of the pipeline input", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_OUTPUT_FLOWRATE = Counter("pipeline_output_flowrate", "The flowrate of the pipeline output", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_EXIT_FLOWRATE = Counter("pipeline_exit_flowrate", "The flowrate of the pipeline exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_OVERFLOW_FLOWRATE = Counter("pipeline_overflow_flowrate", "The flowrate of the pipeline overflow", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_ERROR_FLOWRATE = Counter("pipeline_error_flowrate", "The flowrate of the pipeline error", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+
+PIPELINE_TOTAL_TIME = Summary("pipeline_total_time", "The total time of the pipeline", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_PROCESSING_COUNT = Gauge("pipeline_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 
 
+CONTROLLER_INPUT_FLOWRATE = Counter("controller_input_flowrate", "The flowrate of the controller input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OUTPUT_FLOWRATE = Counter("controller_output_flowrate", "The flowrate of the controller output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_EXIT_FLOWRATE = Counter("controller_exit_flowrate", "The flowrate of the controller exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OVERFLOW_FLOWRATE = Counter("controller_overflow_flowrate", "The flowrate of the controller overflow", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_ERROR_FLOWRATE = Counter("controller_error_flowrate", "The flowrate of the controller error", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+
+CONTROLLER_INPUT_WAITING_TIME = Summary("controller_input_waiting_time", "The waiting time of the controller input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OUTPUT_WAITING_TIME = Summary("controller_output_waiting_time", "The waiting time of the controller output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_TOTAL_TIME = Summary("controller_total_time", "The total time of the controller", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+
+CONTROLLER_INPUT_WAITING_COUNTER = Gauge("controller_input_waiting_counter", "The number of data packages waiting to be processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OUTPUT_WAITING_COUNTER = Gauge("controller_output_waiting_counter", "The number of data packages waiting to be output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_PROCESSING_COUNT = Gauge("controller_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+
+
+PHASE_INPUT_FLOWRATE = Counter("phase_input_flowrate", "The flowrate of the phase input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+PHASE_OUTPUT_FLOWRATE = Counter("phase_output_flowrate", "The flowrate of the phase output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+PHASE_EXIT_FLOWRATE = Counter("phase_exit_flowrate", "The flowrate of the phase exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+PHASE_ERROR_FLOWRATE = Counter("phase_error_flowrate", "The flowrate of the phase error", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+
+PHASE_TOTAL_TIME = Summary("phase_total_time", "The total time of the phase", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+
+PHASE_PROCESSING_COUNT = Gauge("phase_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 
 class ControllerMode(Enum):
     """
@@ -51,32 +76,48 @@ def controller_mode_to_str(mode: ControllerMode) -> str:
         return "UNKNOWN"
 
 class PipelinePhase:
-    def __init__(self, modules: List[Module], name: str = "") -> None:
+    def __init__(self, name: str, modules: List[Module]) -> None:
         self._id: str = f"PP-{uuid.uuid4()}"
-        self._name: str = name if name else self._id
+        self._name: str = name
         self._modules: List[Module] = modules
 
         self._lock = threading.Lock()
 
-    def execute(self, data_package: DataPackage, data_package_controller: DataPackagePhaseController) -> None:
+    def execute(self, data_package: DataPackage, data_package_controller: DataPackageController) -> None:
         start_time = time.time()
-
         with self._lock:
-            dp_phase = DataPackagePhase()
-            dp_phase.running=True
-            dp_phase.start_time=start_time
+            PHASE_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
+            PHASE_PROCESSING_COUNT.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
+        
+        dp_phase = DataPackagePhase()
+        with self._lock:
+            dp_phase.phase_id=self._id
+            dp_phase.phase_name=self._name
+        dp_phase.running=True
+        dp_phase.start_time=start_time
             
         data_package_controller.phases.append(dp_phase)
 
         for module in self._modules:
-            module.run(data_package=data_package, phase=dp_phase)
+            module.run(dp=data_package, dpc=data_package_controller, dpp=dp_phase)
             if not data_package.success:
                 break
 
         ent_time = time.time()
         dp_phase.running = False
         dp_phase.end_time = ent_time
-        dp_phase.processing_time = ent_time - start_time
+        total_time = ent_time - start_time
+        dp_phase.total_time = total_time
+
+        with self._lock:
+            if data_package.success:
+                PHASE_OUTPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
+            elif len(data_package.errors) == 0:
+                PHASE_EXIT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
+            else:
+                PHASE_ERROR_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc
+            PHASE_PROCESSING_COUNT.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).dec()
+            PHASE_TOTAL_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).observe(total_time)
 
     def __deepcopy__(self, memo: Dict) -> 'PipelinePhase':
         copied_phase = PipelinePhase(
@@ -210,14 +251,14 @@ class OrderTracker:
 @dataclass
 class QueueData:
     start_context: str
-    dp_phase_con: DataPackagePhaseController
+    dp_phase_con: DataPackageController
     data_package: DataPackage
     start_time: float
 
 class PipelineController:
-    def __init__(self, phases: List[PipelinePhase], name: str = "", max_workers: int = 1, queue_size: int = -1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
-        self._id: str = f"PPE-{uuid.uuid4()}"
-        self._name: str = name if name else self._id
+    def __init__(self, name: str, phases: List[PipelinePhase], max_workers: int = 1, queue_size: int = -1, mode: ControllerMode = ControllerMode.NOT_PARALLEL) -> None:
+        self._id: str = f"C-{uuid.uuid4()}"
+        self._name: str = name
         self._phases: List[PipelinePhase] = phases
         self._mode: ControllerMode = mode
 
@@ -239,18 +280,23 @@ class PipelineController:
 
         self._lock = threading.Lock()
 
-    def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:
+    def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], overflow_callback: Callable[[DataPackage], None]) -> None:
         start_time = time.time()
+        with self._lock:
+            CONTROLLER_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
 
-        dp_phase_con = DataPackagePhaseController()
-        dp_phase_con.mode=controller_mode_to_str(self._mode)
-        dp_phase_con.workers=self._max_workers
-        dp_phase_con.sequence_number=self._order_tracker.get_next_sequence_number()
+        dp_phase_con = DataPackageController()
+        with self._lock:
+            dp_phase_con.controller_id=self._id
+            dp_phase_con.controller_name=self._name
+            dp_phase_con.mode=controller_mode_to_str(self._mode)
+            dp_phase_con.workers=self._max_workers
+            dp_phase_con.sequence_number=self._order_tracker.get_next_sequence_number()
         dp_phase_con.running=True
         dp_phase_con.start_time=start_time
 
         # print(f"Starting {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
-        data_package.controller.append(dp_phase_con)
+        data_package.controllers.append(dp_phase_con)
 
         self._order_tracker.add_data(data_package)
         
@@ -269,6 +315,11 @@ class PipelineController:
                     if queue_data is None:
                         continue
 
+                    with self._lock:
+                        CONTROLLER_INPUT_WAITING_COUNTER.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).dec()
+                        CONTROLLER_PROCESSING_COUNT.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).inc()
+
+
                     # print(f"C{len(queue_data.data_package.controller)} Starting {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
 
                     start_context = queue_data.start_context
@@ -280,8 +331,10 @@ class PipelineController:
                     threading.current_thread().start_context = start_context # type: ignore
                     
                     try:
-                        start_processing_time = time.time()
-                        dp_phase_con.waiting_time = time.time() - start_time
+                        waiting_time = time.time() - start_time
+                        dp_phase_con.input_waiting_time = waiting_time
+                        with self._lock:
+                            CONTROLLER_INPUT_WAITING_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).observe(waiting_time)
 
                         temp_phases = []
                         with self._lock:
@@ -299,26 +352,46 @@ class PipelineController:
                         data_package.success = False
                         data_package.errors.append(exception_to_error(e))
 
-
-                    dp_phase_con.end_time = time.time()
-                    dp_phase_con.processing_time = dp_phase_con.end_time - start_processing_time
-                    dp_phase_con.total_time = dp_phase_con.end_time - dp_phase_con.start_time
-                    dp_phase_con.running = False
-
+                    dp_phase_con.end_time = time.time() # This will set the end time temporarily (bad code). It will be overriden in the next block.
+                    CONTROLLER_OUTPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
                     with self._order_tracker.instance_lock:
                         # print(f"C{len(queue_data.data_package.controller)} Finished {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
                         self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
                         finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
                         # print(f"C{len(queue_data.data_package.controller)} {len(finished_data_packages)}")
-                        for finished_data_package in finished_data_packages:
-                            if finished_data_package.success:
-                                callback(finished_data_package)
-                            elif len(finished_data_package.errors) == 0:
-                                if exit_callback:
-                                    exit_callback(finished_data_package)
-                            else:
-                                if error_callback:
-                                    error_callback(finished_data_package)
+                        for dp in finished_data_packages:
+                            # find controller in dp.controllers with id self._id
+                            con: Optional[DataPackageController] = None
+                            for co in dp.controllers:
+                                if co.controller_id == self._id:
+                                    con = co
+                                    break
+                            if con is None:
+                                raise ValueError("Controller not found in DataPackage.")
+                            
+                            end_time = time.time()
+                            total_time = end_time - dp.start_time
+                            output_waiting_time = end_time - con.end_time # This is why the end time was temporarily set.
+                            con.output_waiting_time = output_waiting_time
+                            con.end_time = end_time # This is where the end time will be overriden. (bad code)
+                            con.total_time = total_time
+                            CONTROLLER_OUTPUT_WAITING_TIME.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).observe(output_waiting_time)
+                            CONTROLLER_OUTPUT_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
+                            
+                            with self._lock:
+                                if dp.success:
+                                    CONTROLLER_OUTPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
+                                elif len(dp.errors) == 0:
+                                    CONTROLLER_EXIT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
+                                else:
+                                    CONTROLLER_ERROR_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
+                                CONTROLLER_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
+                                CONTROLLER_TOTAL_TIME.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).observe(total_time)
+
+                            dp_phase_con.running = False
+                            
+                            callback(dp)
+                            
             except Exception as e:
                 print(exception_to_error(e))
 
@@ -328,6 +401,9 @@ class PipelineController:
                 popped_value = self._dp_queue[0]
 
             # print(f"C{len(data_package.controller)} Put in Queue: {data_package.data}")
+            with self._lock:
+                CONTROLLER_INPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
+            
             self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time))
 
             if popped_value:
@@ -339,8 +415,11 @@ class PipelineController:
                 self._executor.submit(execute_phases)
 
         if popped_value:
-            if exit_callback:
-                exit_callback(popped_value.data_package)
+            dp: DataPackage = popped_value.data_package
+            with self._lock:
+                CONTROLLER_OVERFLOW_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
+                CONTROLLER_INPUT_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
+            overflow_callback(dp)
         
 
 
@@ -365,21 +444,68 @@ class PipelineController:
             self._order_tracker = order_tracker
 
 class PipelineInstance:
-    def __init__(self, name: str = "") -> None:
+    def __init__(self) -> None:
         self._id: str = f"PI-{uuid.uuid4()}"
-        self._name: str = name if name else self._id
         self._controller_queue: Dict[str, List[PipelineController]] = {}
 
         self._lock = threading.Lock()
 
-    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
-        dp.pipeline_instance_id = self._id
+    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, overflow_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
+        with self._lock:
+            PIPELINE_INPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+            PIPELINE_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+        
+        with self._lock:
+            dp.pipeline_instance_id = self._id
 
         self._controller_queue[dp.id] = controllers.copy()
+        
+        def end_dp(dp: DataPackage) -> None:
+            del self._controller_queue[dp.id]
+            end_time = time.time()
+            dp.end_time = end_time
+            total_time = end_time - dp.start_time
+            dp.total_time = total_time
+            dp.running = False
+            with self._lock:
+                PIPELINE_TOTAL_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(total_time)
+                PIPELINE_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, self._id).dec()
+        
+        def new_success_callback(dp: DataPackage) -> None:
+            nonlocal callback
+            end_dp(dp)
+            with self._lock:
+                PIPELINE_OUTPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+            callback(dp)
+        
+        def new_exit_callback(dp: DataPackage) -> None:
+            nonlocal exit_callback
+            end_dp(dp)
+            with self._lock:
+                PIPELINE_EXIT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+            if exit_callback:
+                exit_callback(dp)
+        
+        def new_overflow_callback(dp: DataPackage) -> None:
+            nonlocal overflow_callback
+            end_dp(dp)
+            with self._lock:
+                PIPELINE_OVERFLOW_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+            if overflow_callback:
+                overflow_callback(dp)
+        
+        def new_error_callback(dp: DataPackage) -> None:
+            nonlocal error_callback
+            end_dp(dp)
+            with self._lock:
+                PIPELINE_ERROR_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+            if error_callback:
+                error_callback(dp)
 
         def new_callback(dp: DataPackage) -> None:
-            nonlocal callback, exit_callback, error_callback
             left_phases = []
+            # if not dp.id in self._controller_queue:
+            #     return
             for controller in self._controller_queue[dp.id]:
                 left_phases.append(controller._name)
 
@@ -388,52 +514,22 @@ class PipelineInstance:
             if dp.success:
                 if len(self._controller_queue[dp.id]) > 0:
                     controller = self._controller_queue[dp.id].pop(0)
-                    controller.execute(dp, new_callback, exit_callback, error_callback)
+                    controller.execute(dp, new_callback, new_overflow_callback)
                     # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
                     return
-            
-            del self._controller_queue[dp.id]
-
-            dp.end_time = time.time()
-            dp.total_time = dp.end_time - dp.start_time
-
-            def calculate_total_waiting_time(module: DataPackageModule) -> float:
-                total_waiting_time = module.waiting_time
-                for sub_module in module.sub_modules:
-                    total_waiting_time += calculate_total_waiting_time(sub_module)
-                return total_waiting_time
-
-            # calculate waiting time
-            temp_waiting = 0.0
-            for dp_controller in dp.controller:
-                temp_waiting += dp_controller.waiting_time
-                for ph in dp_controller.phases:
-                    for module in ph.modules:
-                        temp_waiting += calculate_total_waiting_time(module)
-            
-            dp.total_waiting_time = temp_waiting
-            dp.total_processing_time = sum([dp_controller.processing_time for dp_controller in dp.controller]) - dp.total_waiting_time
-
-            dp.running = False
 
             if dp.success:
-                callback(dp)
+                new_success_callback(dp)
             elif len(dp.errors) == 0:
-                if exit_callback:
-                    exit_callback(dp)
+                new_exit_callback(dp)
             else:
-                if error_callback:
-                    error_callback(dp)
+                new_error_callback(dp)
 
         new_callback(dp)
 
     def get_id(self) -> str:
         with self._lock:
             return self._id
-        
-    def get_name(self) -> str:
-        with self._lock:
-            return self._name
 
 T = TypeVar('T')
 
@@ -467,7 +563,7 @@ class Pipeline(Generic[T]):
             for c_or_p in controllers_or_phases:
                 if isinstance(c_or_p, PipelinePhase):
                     phase_list = [c_or_p]
-                    temp_controllers.append(PipelineController(phase_list))
+                    temp_controllers.append(PipelineController(self._name + "-Controller", phase_list))
                 else:
                     temp_controllers.append(c_or_p)
         
@@ -485,7 +581,7 @@ class Pipeline(Generic[T]):
                     self._instances_controllers[ex_id].append(copy_con)
 
     def register_instance(self) -> str:
-        ex = PipelineInstance(name=f"")
+        ex = PipelineInstance()
         with self._lock:
             self._pipeline_instances[ex.get_id()] = ex
             self._instances_controllers[ex.get_id()] = []
@@ -503,7 +599,7 @@ class Pipeline(Generic[T]):
                 del self._pipeline_instances[ex_id]
                 del self._instances_controllers[ex_id]
 
-    def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], exit_callback: Optional[Callable[[DataPackage[T]], None]] = None, error_callback: Optional[Callable[[DataPackage[T]], None]] = None) -> DataPackage[T]:
+    def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], exit_callback: Optional[Callable[[DataPackage[T]], None]] = None, overflow_callback: Optional[Callable[[DataPackage[T]], None]] = None, error_callback: Optional[Callable[[DataPackage[T]], None]] = None) -> DataPackage[T]:
         ex = self._get_instance(instance_id)
         if not ex:
             raise ValueError("Instance ID not found")
@@ -514,11 +610,13 @@ class Pipeline(Generic[T]):
 
         # Put data into DataPackage
         dp = DataPackage[T]()
-        dp.pipeline_id=self._id
+        with self._lock:
+            dp.pipeline_id=self._id
+            dp.pipeline_name=self._name
         dp.pipeline_instance_id=instance_id
         dp.data=data
         dp.start_time=time.time()
 
         dp.running = True
-        ex.execute(temp_phases, dp, callback, exit_callback, error_callback)
+        ex.execute(temp_phases, dp, callback, exit_callback, overflow_callback, error_callback)
         return dp

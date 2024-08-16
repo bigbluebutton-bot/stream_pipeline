@@ -21,63 +21,69 @@ message Error {
 // DataPackageModule message definition
 message DataPackageModule {
     string id = 1;
-    bool running = 2;
-    double start_time = 3;
-    double end_time = 4;
-    double waiting_time = 5;
-    double processing_time = 6;
-    double total_time = 7;
-    repeated DataPackageModule sub_modules = 8;
-    string message = 9;
-    bool success = 10;
-    Error error = 11;
+    string module_id = 2;
+    string module_name = 3;
+    bool running = 4;
+    double start_time = 5;
+    double end_time = 6;
+    double waiting_time = 7;
+    double total_time = 8;
+    repeated DataPackageModule sub_modules = 9;
+    string message = 10;
+    bool success = 11;
+    Error error = 12;
 }
 
 // DataPackagePhase message definition
 message DataPackagePhase {
     string id = 1;
-    bool running = 2;
-    double start_time = 3;
-    double end_time = 4;
-    double processing_time = 5;
-    repeated DataPackageModule modules = 6;
+    string phase_id = 2;
+    string phase_name = 3;
+    bool running = 4;
+    double start_time = 5;
+    double end_time = 6;
+    double total_time = 7;
+    repeated DataPackageModule modules = 8;
 }
 
-// DataPackagePhaseController message definition
-message DataPackagePhaseController {
+// DataPackageController message definition
+message DataPackageController {
     string id = 1;
-    string mode = 2;
-    int32 workers = 3;
-    int32 sequence_number = 4;
-    bool running = 5;
-    double start_time = 6;
-    double end_time = 7;
-    double waiting_time = 8;
-    double processing_time = 9;
-    double total_time = 10;
-    repeated DataPackagePhase phases = 11;
+    string controller_id = 2;
+    string controller_name = 3;
+    string mode = 4;
+    int32 workers = 5;
+    int32 sequence_number = 6;
+    bool running = 7;
+    double start_time = 8;
+    double end_time = 9;
+    double input_waiting_time = 10;
+    double output_waiting_time = 11;
+    double total_time = 12;
+    repeated DataPackagePhase phases = 13;
 }
 
 // DataPackage message definition
 message DataPackage {
     string id = 1;
     string pipeline_id = 2;
-    string pipeline_instance_id = 3;
-    repeated DataPackagePhaseController controller = 4;
-    bytes data = 5;
-    bool running = 6;
-    double start_time = 7;
-    double end_time = 8;
-    double total_waiting_time = 9;
-    double total_processing_time = 10;
-    double total_time = 11;
-    bool success = 12;
-    repeated Error errors = 13;
+    string pipeline_name = 3;
+    string pipeline_instance_id = 4;
+    repeated DataPackageController controllers = 5;
+    bytes data = 6;
+    bool running = 7;
+    double start_time = 8;
+    double end_time = 9;
+    double total_time = 10;
+    bool success = 11;
+    repeated Error errors = 12;
 }
 
-message RequestDPandDPM {
+message RequestDP {
     DataPackage data_package = 1;
-    DataPackageModule data_package_module = 2;
+    string data_package_controller_id = 2;
+    string data_package_phase_id = 3;
+    string data_package_module_id = 4;
 }
 
 message ReturnDPandError {
@@ -86,5 +92,5 @@ message ReturnDPandError {
 }
 
 service ModuleService {
-    rpc run (RequestDPandDPM) returns (ReturnDPandError);
+    rpc run (RequestDP) returns (ReturnDPandError);
 }

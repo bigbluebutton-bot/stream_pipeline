@@ -1,13 +1,15 @@
 from concurrent import futures
-import grpc # type: ignore
+import grpc
 import time
-from typing import Any, Generic, Tuple, TypeVar, Union
+from typing import Any, Generic, Optional, Tuple, TypeVar, Union
+
+from .data_package import DataPackage, DataPackageController, DataPackagePhase, DataPackageModule
 
 from .error import exception_to_error
 
-from .module_classes import Module, DataPackage, DataPackageModule
-from .data_pb2 import ReturnDPandError, RequestDPandDPM # type: ignore
-from .data_pb2_grpc import ModuleServiceServicer as ModuleServiceServicerBase, add_ModuleServiceServicer_to_server # type: ignore
+from .module_classes import Module 
+from .data_pb2 import ReturnDPandError, RequestDP
+from .data_pb2_grpc import ModuleServiceServicer as ModuleServiceServicerBase, add_ModuleServiceServicer_to_server
 
 T = TypeVar('T')
 
@@ -16,57 +18,80 @@ class ModuleServiceServicer(Generic[T], ModuleServiceServicerBase):
     def __init__(self, module: Module):
         self.module = module
 
-    def run(self, request_grpc: RequestDPandDPM, context: grpc.ServicerContext) -> ReturnDPandError:
-        data_package: Union[None, DataPackage] = None
+    def run(self, request_grpc: RequestDP, context: grpc.ServicerContext) -> ReturnDPandError:
+        dp: Union[None, DataPackage] = None
         try:
             # Convert gRPC request to normal objects
-            data_package, data_package_module = self.grpc_to_normal(request_grpc)
+            dp, dpc, dpp, dpm = self.grpc_to_normal(request_grpc)
             
             # Run the module with data_package and data_package_module
-            self.module.run(data_package, data_package_module)
+            self.module.run(dp, dpc, dpp, dpm)
             
             # Convert the result back to gRPC response
-            return_dp_and_error = self.normal_to_grpc(data_package)
+            return_dp_and_error = self.normal_to_grpc(dp)
             return return_dp_and_error
         except Exception as e:
             # In case of any exception, convert it to a gRPC response
             try:
-                return_dp_and_error = self.normal_to_grpc(data_package, e)
+                return_dp_and_error = self.normal_to_grpc(dp, e)
                 return return_dp_and_error
             except Exception as nested_exception:
                 return_dp_and_error = ReturnDPandError()
-                return_dp_and_error.error.CopyFrom(exception_to_error(nested_exception).to_grpc()) # type: ignore
+                err = exception_to_error(nested_exception)
+                if err:
+                    return_dp_and_error.error.CopyFrom(err.to_grpc())
                 return return_dp_and_error
             
     # Function to convert gRPC message to normal objects
-    def grpc_to_normal(self, request_grpc: RequestDPandDPM) -> Tuple[DataPackage[T], Union[None, DataPackageModule]]:
+    def grpc_to_normal(self, request_grpc: RequestDP) -> Tuple[DataPackage[T], DataPackageController, DataPackagePhase, DataPackageModule]:
         dp = DataPackage[T]()
         dp.set_from_grpc(request_grpc.data_package)
-        dpm = DataPackageModule()
-        dpm.set_from_grpc(request_grpc.data_package_module)
+        dpc_id = request_grpc.data_package_controller_id
+        dpp_id = request_grpc.data_package_phase_id
+        dpm_id = request_grpc.data_package_module_id
 
-        def find_module(data_package_module: DataPackageModule) -> Union[None, DataPackageModule]:
-            for sm in data_package_module.sub_modules:
-                if sm.id == dpm.id:
-                    return sm
-                found_module = find_module(sm)
-                if found_module:
-                    return found_module
+        def find_controller(dp: DataPackage, dpm_id: str) -> Optional[DataPackageController]:
+            for dpc in dp.controllers:
+                if dpc.id == dpc_id:
+                    return dpc
+            return None
+        
+        def find_phase(dpc: DataPackageController, dpp_id: str) -> Optional[DataPackagePhase]:
+            for dpp in dpc.phases:
+                if dpp.id == dpp_id:
+                    return dpp
+            return None
+        
+        def find_module(dpp: Union[DataPackagePhase, DataPackageModule], dpm_id: str) -> Optional[DataPackageModule]:
+            modules = []
+            if isinstance(dpp, DataPackagePhase):
+                modules = dpp.modules
+            elif isinstance(dpp, DataPackageModule):
+                modules = dpp.sub_modules
+            else:
+                raise ValueError(f"Encoder gRPC to DataPackage: Phase not found. Type not recognized: {type(dpp)}")
+
+            for dpm in modules:
+                if dpm.id == dpm_id:
+                    return dpm
+                elif dpm.sub_modules:
+                    for sub_dpm in dpm.sub_modules:
+                        found_dpm = find_module(sub_dpm, dpm_id)
+                        if found_dpm:
+                            return found_dpm
             return None
 
-        def find_and_set_module(dp: DataPackage[T], dpm: DataPackageModule) -> DataPackageModule:
-            for phase_controller in dp.controller:
-                for phase in phase_controller.phases:
-                    for module in phase.modules:
-                        if module.id == dpm.id:
-                            return module
-                        found_module = find_module(module)
-                        if found_module:
-                            return found_module
-            return dpm
+        dpc = find_controller(dp, dpc_id)
+        if not dpc:
+            raise ValueError("Encoder gRPC to DataPackage: Controller not found")
+        dpp = find_phase(dpc, dpp_id)
+        if not dpp:
+            raise ValueError("Encoder gRPC to DataPackage: Phase not found")
+        dpm = find_module(dpp, dpm_id)
+        if not dpm:
+            raise ValueError("Encoder gRPC to DataPackage: Module not found")
 
-        dpm = find_and_set_module(dp, dpm)
-        return dp, dpm
+        return dp, dpc, dpp, dpm
 
     # Function to convert normal objects to gRPC messages
     def normal_to_grpc(self, request: Union[DataPackage[T], None], error: Union[None, Exception] = None) -> ReturnDPandError:
