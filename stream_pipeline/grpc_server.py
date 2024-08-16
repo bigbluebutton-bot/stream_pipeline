@@ -1,5 +1,5 @@
 from concurrent import futures
-import grpc # type: ignore
+import grpc
 import time
 from typing import Any, Generic, Optional, Tuple, TypeVar, Union
 
@@ -37,7 +37,9 @@ class ModuleServiceServicer(Generic[T], ModuleServiceServicerBase):
                 return return_dp_and_error
             except Exception as nested_exception:
                 return_dp_and_error = ReturnDPandError()
-                return_dp_and_error.error.CopyFrom(exception_to_error(nested_exception).to_grpc()) # type: ignore
+                err = exception_to_error(nested_exception)
+                if err:
+                    return_dp_and_error.error.CopyFrom(err.to_grpc())
                 return return_dp_and_error
             
     # Function to convert gRPC message to normal objects
