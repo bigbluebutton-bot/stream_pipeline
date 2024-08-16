@@ -7,7 +7,7 @@ def main() -> None:
     import random
     import threading
     from typing import Union
-    from stream_pipeline.data_package import DataPackagePhaseController, DataPackagePhase, DataPackageModule
+    from stream_pipeline.data_package import DataPackageController, DataPackagePhase, DataPackageModule
     from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
     from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
     from prometheus_client import start_http_server
@@ -26,7 +26,7 @@ def main() -> None:
 
     # Example custom modules
     class DataValidationModule(ExecutionModule):
-        def execute(self, dp: DataPackage[Data], dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+        def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             if dp.data and dp.data.key:
                 dpm.success = True
                 dpm.message = "Validation succeeded"
@@ -40,7 +40,7 @@ def main() -> None:
                 timeout=40.0
             ))
 
-        def execute(self, dp: DataPackage[Data], dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+        def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             list1 = [1, 2, 3, 4, 5, 6]
             randomint = random.choice(list1)
             time.sleep(randomint)
@@ -60,21 +60,21 @@ def main() -> None:
             return False
 
     class SuccessModule(ExecutionModule):
-        def execute(self, dp: DataPackage[Data], dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+        def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             if dp.data:
                 dp.data.status = "success"
                 dpm.success = True
                 dpm.message = "Condition true: success"
 
     class FailureModule(ExecutionModule):
-        def execute(self, dp: DataPackage[Data], dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+        def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             if dp.data:
                 dp.data.status = "failure"
                 dpm.success = True
                 dpm.message = "Condition false: failure"
 
     class RandomExit(ExecutionModule):
-        def execute(self, dp: DataPackage[Data], dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+        def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             list1 = [True, True, True, True, True, False]
             randombool = random.choice(list1)
             if randombool:
@@ -199,6 +199,8 @@ def main() -> None:
 
     print(f"Example DataPackage: {dp}")
     print("THE END")
+
+    time.sleep(1000)
 
 if __name__ == "__main__":
     main()

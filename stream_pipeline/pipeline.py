@@ -13,7 +13,7 @@ from enum import Enum
 import uuid
 from prometheus_client import Gauge, Summary, Counter
 
-from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackagePhaseController
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController
 
 PIPELINE_INPUT_FLOWRATE = Counter("pipeline_input_flowrate", "The flowrate of the pipeline input", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 PIPELINE_OUTPUT_FLOWRATE = Counter("pipeline_output_flowrate", "The flowrate of the pipeline output", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
@@ -81,7 +81,7 @@ class PipelinePhase:
 
         self._lock = threading.Lock()
 
-    def execute(self, data_package: DataPackage, data_package_controller: DataPackagePhaseController) -> None:
+    def execute(self, data_package: DataPackage, data_package_controller: DataPackageController) -> None:
         start_time = time.time()
         with self._lock:
             PHASE_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
@@ -249,7 +249,7 @@ class OrderTracker:
 @dataclass
 class QueueData:
     start_context: str
-    dp_phase_con: DataPackagePhaseController
+    dp_phase_con: DataPackageController
     data_package: DataPackage
     start_time: float
 
@@ -283,7 +283,7 @@ class PipelineController:
         with self._lock:
             CONTROLLER_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
 
-        dp_phase_con = DataPackagePhaseController()
+        dp_phase_con = DataPackageController()
         with self._lock:
             dp_phase_con.controller_id=self._id
             dp_phase_con.controller_name=self._name

@@ -338,7 +338,7 @@ class DataPackagePhase(ThreadSafeClass):
 
 
 @dataclass
-class DataPackagePhaseController(ThreadSafeClass):
+class DataPackageController(ThreadSafeClass):
     """
     Represents metadata for a phase execution that has processed a data package.
     
@@ -542,7 +542,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
     _pipeline_id: str = ""
     _pipeline_name: str = ""
     _pipeline_instance_id: str = ""
-    _controller: List[DataPackagePhaseController] = field(default_factory=list)
+    _controller: List[DataPackageController] = field(default_factory=list)
     _data: Optional[T] = None
     _running: bool = False
     _start_time: float = 0.0
@@ -587,11 +587,11 @@ class DataPackage(Generic[T], ThreadSafeClass):
         self._set_attribute('pipeline_instance_id', value)
     
     @property
-    def controller(self) -> List[DataPackagePhaseController]:
+    def controller(self) -> List[DataPackageController]:
         return self._get_attribute('controller')
     
     @controller.setter
-    def controller(self, value: List[DataPackagePhaseController]) -> None:
+    def controller(self, value: List[DataPackageController]) -> None:
         self._set_attribute('controller', value)
     
     @property
@@ -673,7 +673,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
                 if execution.id in existing_phases:
                     existing_phases[execution.id].set_from_grpc(execution)
                 else:
-                    new_execution = DataPackagePhaseController()
+                    new_execution = DataPackageController()
                     new_execution.set_from_grpc(execution)
                     self.controller.append(new_execution)
 

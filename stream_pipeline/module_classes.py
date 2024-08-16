@@ -11,7 +11,7 @@ from prometheus_client import Gauge, Summary, Counter
 from . import data_pb2
 from . import data_pb2_grpc
 from .error import Error, exception_to_error
-from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackagePhaseController
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController
 
 # Metrics to track time spent on processing modules
 MODULE_INPUT_FLOWRATE = Counter("module_input_flowrate", "The flowrate of the module input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
@@ -69,7 +69,7 @@ class Module(ABC):
         if id(self) in self._locks:
             del self._locks[id(self)]
 
-    def run(self, dp: DataPackage, dpc: DataPackagePhaseController, dpp: DataPackagePhase, parent_module: Optional[DataPackageModule] = None) -> None:
+    def run(self, dp: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, parent_module: Optional[DataPackageModule] = None) -> None:
         """
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
@@ -151,7 +151,7 @@ class Module(ABC):
         
 
 
-    def _execute_with_result(self, data: DataPackage, dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+    def _execute_with_result(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         """
         Helper method to execute the `execute` method and store the result in a container.
         """
@@ -166,7 +166,7 @@ class Module(ABC):
             dpm.error = exception_to_error(e)
 
     @abstractmethod
-    def execute(self, data: DataPackage, data_package_controller: DataPackagePhaseController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, data_package_controller: DataPackageController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:
         """
         Abstract method to be implemented by subclasses.
         Performs an operation on the data package.
@@ -202,7 +202,7 @@ class ExecutionModule(Module, ABC):
     Abstract class for modules that perform specific execution tasks.
     """
     @abstractmethod
-    def execute(self, data: DataPackage, data_package_controller: DataPackagePhaseController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, data_package_controller: DataPackageController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:
         """
         Method to be implemented by subclasses for specific execution logic.
         """
@@ -226,7 +226,7 @@ class ConditionModule(Module, ABC):
         return True
 
     @final
-    def execute(self, data: DataPackage, dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         """
         Executes the true_module if condition is met, otherwise executes the false_module.
         """
@@ -245,7 +245,7 @@ class CombinationModule(Module):
         self.modules = modules
     
     @final
-    def execute(self, data: DataPackage, dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         """
         Executes each module in the list sequentially, passing the output of one as the input to the next.
         """
@@ -265,7 +265,7 @@ class ExternalModule(Module):
         self.port: int = port
 
     @final
-    def execute(self, data: DataPackage, dpc: DataPackagePhaseController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
+    def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         address = f"{self.host}:{self.port}"
         with grpc.insecure_channel(address) as channel:
             stub = data_pb2_grpc.ModuleServiceStub(channel)

@@ -3,7 +3,7 @@ import grpc
 import time
 from typing import Any, Generic, Optional, Tuple, TypeVar, Union
 
-from .data_package import DataPackage, DataPackagePhaseController, DataPackagePhase, DataPackageModule
+from .data_package import DataPackage, DataPackageController, DataPackagePhase, DataPackageModule
 
 from .error import exception_to_error
 
@@ -43,20 +43,20 @@ class ModuleServiceServicer(Generic[T], ModuleServiceServicerBase):
                 return return_dp_and_error
             
     # Function to convert gRPC message to normal objects
-    def grpc_to_normal(self, request_grpc: RequestDP) -> Tuple[DataPackage[T], DataPackagePhaseController, DataPackagePhase, DataPackageModule]:
+    def grpc_to_normal(self, request_grpc: RequestDP) -> Tuple[DataPackage[T], DataPackageController, DataPackagePhase, DataPackageModule]:
         dp = DataPackage[T]()
         dp.set_from_grpc(request_grpc.data_package)
         dpc_id = request_grpc.data_package_controller_id
         dpp_id = request_grpc.data_package_phase_id
         dpm_id = request_grpc.data_package_module_id
 
-        def find_controller(dp: DataPackage, dpm_id: str) -> Optional[DataPackagePhaseController]:
+        def find_controller(dp: DataPackage, dpm_id: str) -> Optional[DataPackageController]:
             for dpc in dp.controller:
                 if dpc.id == dpc_id:
                     return dpc
             return None
         
-        def find_phase(dpc: DataPackagePhaseController, dpp_id: str) -> Optional[DataPackagePhase]:
+        def find_phase(dpc: DataPackageController, dpp_id: str) -> Optional[DataPackagePhase]:
             for dpp in dpc.phases:
                 if dpp.id == dpp_id:
                     return dpp
