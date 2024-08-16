@@ -51,7 +51,7 @@ class ModuleServiceServicer(Generic[T], ModuleServiceServicerBase):
         dpm_id = request_grpc.data_package_module_id
 
         def find_controller(dp: DataPackage, dpm_id: str) -> Optional[DataPackageController]:
-            for dpc in dp.controller:
+            for dpc in dp.controllers:
                 if dpc.id == dpc_id:
                     return dpc
             return None

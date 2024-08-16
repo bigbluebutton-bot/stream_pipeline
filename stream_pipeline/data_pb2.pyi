@@ -224,8 +224,8 @@ class DataPackagePhase(google.protobuf.message.Message):
 global___DataPackagePhase = DataPackagePhase
 
 @typing.final
-class DataPackagePhaseController(google.protobuf.message.Message):
-    """DataPackagePhaseController message definition"""
+class DataPackageController(google.protobuf.message.Message):
+    """DataPackageController message definition"""
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -272,7 +272,7 @@ class DataPackagePhaseController(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["controller_id", b"controller_id", "controller_name", b"controller_name", "end_time", b"end_time", "id", b"id", "mode", b"mode", "phases", b"phases", "running", b"running", "sequence_number", b"sequence_number", "start_time", b"start_time", "total_time", b"total_time", "waiting_time", b"waiting_time", "workers", b"workers"]) -> None: ...
 
-global___DataPackagePhaseController = DataPackagePhaseController
+global___DataPackageController = DataPackageController
 
 @typing.final
 class DataPackage(google.protobuf.message.Message):
@@ -284,7 +284,7 @@ class DataPackage(google.protobuf.message.Message):
     PIPELINE_ID_FIELD_NUMBER: builtins.int
     PIPELINE_NAME_FIELD_NUMBER: builtins.int
     PIPELINE_INSTANCE_ID_FIELD_NUMBER: builtins.int
-    CONTROLLER_FIELD_NUMBER: builtins.int
+    CONTROLLERS_FIELD_NUMBER: builtins.int
     DATA_FIELD_NUMBER: builtins.int
     RUNNING_FIELD_NUMBER: builtins.int
     START_TIME_FIELD_NUMBER: builtins.int
@@ -303,7 +303,7 @@ class DataPackage(google.protobuf.message.Message):
     total_time: builtins.float
     success: builtins.bool
     @property
-    def controller(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___DataPackagePhaseController]: ...
+    def controllers(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___DataPackageController]: ...
     @property
     def errors(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Error]: ...
     def __init__(
@@ -313,7 +313,7 @@ class DataPackage(google.protobuf.message.Message):
         pipeline_id: builtins.str = ...,
         pipeline_name: builtins.str = ...,
         pipeline_instance_id: builtins.str = ...,
-        controller: collections.abc.Iterable[global___DataPackagePhaseController] | None = ...,
+        controllers: collections.abc.Iterable[global___DataPackageController] | None = ...,
         data: builtins.bytes = ...,
         running: builtins.bool = ...,
         start_time: builtins.float = ...,
@@ -322,7 +322,7 @@ class DataPackage(google.protobuf.message.Message):
         success: builtins.bool = ...,
         errors: collections.abc.Iterable[global___Error] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["controller", b"controller", "data", b"data", "end_time", b"end_time", "errors", b"errors", "id", b"id", "pipeline_id", b"pipeline_id", "pipeline_instance_id", b"pipeline_instance_id", "pipeline_name", b"pipeline_name", "running", b"running", "start_time", b"start_time", "success", b"success", "total_time", b"total_time"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["controllers", b"controllers", "data", b"data", "end_time", b"end_time", "errors", b"errors", "id", b"id", "pipeline_id", b"pipeline_id", "pipeline_instance_id", b"pipeline_instance_id", "pipeline_name", b"pipeline_name", "running", b"running", "start_time", b"start_time", "success", b"success", "total_time", b"total_time"]) -> None: ...
 
 global___DataPackage = DataPackage
 

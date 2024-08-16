@@ -294,7 +294,7 @@ class PipelineController:
         dp_phase_con.start_time=start_time
 
         # print(f"Starting {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
-        data_package.controller.append(dp_phase_con)
+        data_package.controllers.append(dp_phase_con)
 
         self._order_tracker.add_data(data_package)
         

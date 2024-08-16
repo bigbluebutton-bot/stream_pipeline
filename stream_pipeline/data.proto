@@ -46,8 +46,8 @@ message DataPackagePhase {
     repeated DataPackageModule modules = 8;
 }
 
-// DataPackagePhaseController message definition
-message DataPackagePhaseController {
+// DataPackageController message definition
+message DataPackageController {
     string id = 1;
     string controller_id = 2;
     string controller_name = 3;
@@ -68,7 +68,7 @@ message DataPackage {
     string pipeline_id = 2;
     string pipeline_name = 3;
     string pipeline_instance_id = 4;
-    repeated DataPackagePhaseController controller = 5;
+    repeated DataPackageController controllers = 5;
     bytes data = 6;
     bool running = 7;
     double start_time = 8;

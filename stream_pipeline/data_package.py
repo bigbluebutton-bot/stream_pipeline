@@ -467,7 +467,7 @@ class DataPackageController(ThreadSafeClass):
     def phases(self, value: List[DataPackagePhase]) -> None:
         self._set_attribute('phases', value)
 
-    def set_from_grpc(self, grpc_execution: data_pb2.DataPackagePhaseController) -> None:
+    def set_from_grpc(self, grpc_execution: data_pb2.DataPackageController) -> None:
         """
         Updates the current instance with data from a gRPC phase execution.
         """
@@ -498,11 +498,11 @@ class DataPackageController(ThreadSafeClass):
 
         self._ThreadSafeClass__immutable_attributes = temp_immutable_attributes
 
-    def to_grpc(self) -> data_pb2.DataPackagePhaseController:
+    def to_grpc(self) -> data_pb2.DataPackageController:
         """
         Converts the current instance to a gRPC phase execution.
         """
-        grpc_execution = data_pb2.DataPackagePhaseController()
+        grpc_execution = data_pb2.DataPackageController()
         grpc_execution.id = self.id
         grpc_execution.controller_id = self.controller_id
         grpc_execution.controller_name = self.controller_name
@@ -529,7 +529,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
         pipeline_id (str):                              ID of the pipeline handling this package.
         pipeline_name (str):                            Name of the pipeline handling this package.
         pipeline_instance_id (str):                     ID of the pipeline instance handling this package.
-        controller (List[DataPackagePhaseController]):  List of phases processed in the mode of execution.
+        controllers (List[DataPackageController]): List of phases processed in the mode of execution.
         data (Optional[T]):                             Actual data contained in the package.
         running (bool):                                 Indicates if the data package is currently being processed.
         start_time (float):                             Timestamp when the data package started processing.
@@ -542,7 +542,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
     _pipeline_id: str = ""
     _pipeline_name: str = ""
     _pipeline_instance_id: str = ""
-    _controller: List[DataPackageController] = field(default_factory=list)
+    _controllers: List[DataPackageController] = field(default_factory=list)
     _data: Optional[T] = None
     _running: bool = False
     _start_time: float = 0.0
@@ -587,12 +587,12 @@ class DataPackage(Generic[T], ThreadSafeClass):
         self._set_attribute('pipeline_instance_id', value)
     
     @property
-    def controller(self) -> List[DataPackageController]:
-        return self._get_attribute('controller')
+    def controllers(self) -> List[DataPackageController]:
+        return self._get_attribute('controllers')
     
-    @controller.setter
-    def controller(self, value: List[DataPackageController]) -> None:
-        self._set_attribute('controller', value)
+    @controllers.setter
+    def controllers(self, value: List[DataPackageController]) -> None:
+        self._set_attribute('controllers', value)
     
     @property
     def data(self) -> Optional[T]:
@@ -667,15 +667,15 @@ class DataPackage(Generic[T], ThreadSafeClass):
         self.pipeline_name = grpc_package.pipeline_name
         self.pipeline_instance_id = grpc_package.pipeline_instance_id
 
-        existing_phases = {phase.id: phase for phase in self.controller}
-        for execution in grpc_package.controller:
-            if execution:
-                if execution.id in existing_phases:
-                    existing_phases[execution.id].set_from_grpc(execution)
+        existing_controllers = {controller.id: controller for controller in self.controllers}
+        for controller in grpc_package.controllers:
+            if controller:
+                if controller.id in existing_controllers:
+                    existing_controllers[controller.id].set_from_grpc(controller)
                 else:
-                    new_execution = DataPackageController()
-                    new_execution.set_from_grpc(execution)
-                    self.controller.append(new_execution)
+                    new_controller = DataPackageController()
+                    new_controller.set_from_grpc(controller)
+                    self.controllers.append(new_controller)
 
         self.data = pickle.loads(grpc_package.data)
         self.running = grpc_package.running
@@ -705,7 +705,7 @@ class DataPackage(Generic[T], ThreadSafeClass):
         grpc_package.pipeline_name = self.pipeline_name
         grpc_package.pipeline_id = self.pipeline_id
         grpc_package.pipeline_instance_id = self.pipeline_instance_id
-        grpc_package.controller.extend([phase.to_grpc() for phase in self.controller])
+        grpc_package.controllers.extend([phase.to_grpc() for phase in self.controllers])
         try:
             grpc_package.data = pickle.dumps(self.data)
         except Exception as e:
