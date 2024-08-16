@@ -1,12 +1,14 @@
 def main() -> None:
     import random
     import time
-    from typing import Union
+    from prometheus_client import start_http_server
     from stream_pipeline.grpc_server import GrpcServer
     from stream_pipeline.data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackagePhaseController
     from stream_pipeline.module_classes import ExecutionModule, ModuleOptions
 
     from data import Data
+
+    start_http_server(8001)
 
     class TestModule(ExecutionModule):
         def __init__(self) -> None:

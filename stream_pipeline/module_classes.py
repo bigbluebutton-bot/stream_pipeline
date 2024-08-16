@@ -5,7 +5,7 @@ import threading
 from typing import  Any, Dict, List, Optional, Tuple, Union, final, NamedTuple
 import time
 import uuid
-import grpc # type: ignore
+import grpc
 from prometheus_client import Gauge, Summary, Counter
 
 from . import data_pb2
@@ -14,6 +14,16 @@ from .error import Error, exception_to_error
 from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackagePhaseController
 
 # Metrics to track time spent on processing modules
+MODULE_INPUT_FLOWRATE = Counter("module_input_flowrate", "The flowrate of the module input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_OUTPUT_FLOWRATE = Counter("module_output_flowrate", "The flowrate of the module output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_EXIT_FLOWRATE = Counter("module_exit_flowrate", "The flowrate of the module exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_ERROR_FLOWRATE = Counter("module_error_flowrate", "The flowrate of the module errors", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+
+MODULE_WAITING_TIME = Summary("module_waiting_time", "Time spent waiting for a module to execute", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_TOTAL_TIME = Summary("module_total_time", "Total time spent executing a module", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+
+MODULE_WAITING_COUNTER = Gauge("module_waiting_counter", "Number of modules waiting to execute", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_PROCESSING_COUNTER = Gauge("module_processing_counter", "Number of modules currently executing", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
 
 class ModuleOptions(NamedTuple):
     """
@@ -51,12 +61,22 @@ class Module(ABC):
         if id(self) not in self._locks:
             self._locks[id(self)] = threading.RLock()
         return self._locks[id(self)]
+    
+    def __del__(self) -> None:
+        """
+        Destructor to remove the lock for the module.
+        """
+        if id(self) in self._locks:
+            del self._locks[id(self)]
 
     def run(self, dp: DataPackage, dpc: DataPackagePhaseController, dpp: DataPackagePhase, parent_module: Optional[DataPackageModule] = None) -> None:
         """
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
         """
+        
+        MODULE_INPUT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
+        
         dpm = DataPackageModule()
         dpm.module_id=self._id
         dpm.module_name=self._name
@@ -78,11 +98,14 @@ class Module(ABC):
         dpm.start_time = start_time
         waiting_time = 0.0
         if self._use_mutex:
+            MODULE_WAITING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
             self._mutex.acquire()
+            MODULE_WAITING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).dec()
             waiting_time = time.time() - start_time
             dpm.waiting_time = waiting_time
+            MODULE_WAITING_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(waiting_time)
         
-        
+        MODULE_PROCESSING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
         # Create a thread to execute the execute method
         execute_thread = threading.Thread(target=self._execute_with_result, args=(dp, dpc, dpp, dpm))
         execute_thread.start_context = threading.current_thread().name # type: ignore
@@ -105,12 +128,21 @@ class Module(ABC):
             dp.success = False
             if dpm.error:
                 dp.errors.append(dpm.error)
+
+        if dpm.success:
+            MODULE_OUTPUT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
+        elif not dpm.error:
+            MODULE_EXIT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
+        else:
+            MODULE_ERROR_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
         
         end_time = time.time()
         dpm.end_time = end_time
         total_time = end_time - start_time
         dpm.total_time = total_time
         dpm.running = False
+        MODULE_PROCESSING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).dec()
+        MODULE_TOTAL_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(total_time)
         
         if self._use_mutex:
             self._mutex.release()
