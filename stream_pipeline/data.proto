@@ -2,6 +2,21 @@ syntax = "proto3";
 
 package data;
 
+// Enum for Status
+enum Status {
+    UNSPECIFIED = 0;  // Default value, when status is not set
+    RUNNING = 1;
+    WAITING = 2;
+    SUCCESS = 3;
+    EXIT = 4;
+    ERROR = 5;
+    OVERFLOW = 6;
+    OUTDATED = 7;
+    WAITING_OUTPUT = 8;
+    WAITING_OUTPUT_FOR_EXIT = 9;
+    WAITING_OUTPUT_FOR_ERROR = 10;
+}
+
 // Error message definition
 message Error {
     string id = 1;
@@ -23,15 +38,14 @@ message DataPackageModule {
     string id = 1;
     string module_id = 2;
     string module_name = 3;
-    bool running = 4;
+    Status status = 4;
     double start_time = 5;
     double end_time = 6;
     double waiting_time = 7;
     double total_time = 8;
     repeated DataPackageModule sub_modules = 9;
     string message = 10;
-    bool success = 11;
-    Error error = 12;
+    Error error = 11;
 }
 
 // DataPackagePhase message definition
@@ -39,7 +53,7 @@ message DataPackagePhase {
     string id = 1;
     string phase_id = 2;
     string phase_name = 3;
-    bool running = 4;
+    Status status = 4;
     double start_time = 5;
     double end_time = 6;
     double total_time = 7;
@@ -54,13 +68,13 @@ message DataPackageController {
     string mode = 4;
     int32 workers = 5;
     int32 sequence_number = 6;
-    bool running = 7;
+    Status status = 7;
     double start_time = 8;
     double end_time = 9;
     double input_waiting_time = 10;
     double output_waiting_time = 11;
     double total_time = 12;
-    repeated DataPackagePhase phases = 13;
+    repeated DataPackagePhase phases = 14;
 }
 
 // DataPackage message definition
@@ -71,12 +85,11 @@ message DataPackage {
     string pipeline_instance_id = 4;
     repeated DataPackageController controllers = 5;
     bytes data = 6;
-    bool running = 7;
+    Status status = 7;
     double start_time = 8;
     double end_time = 9;
     double total_time = 10;
-    bool success = 11;
-    repeated Error errors = 12;
+    repeated Error errors = 11;
 }
 
 message RequestDP {
@@ -88,7 +101,8 @@ message RequestDP {
 
 message ReturnDPandError {
     DataPackage data_package = 1;
-    Error error = 2;
+    string data_package_module_id = 2;
+    Error error = 3;
 }
 
 service ModuleService {

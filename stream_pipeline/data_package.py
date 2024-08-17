@@ -7,7 +7,20 @@ from . import data_pb2
 from .thread_safe_class import ThreadSafeClass
 from .error import Error, exception_to_error
 
+from enum import Enum
 
+class Status(Enum):
+    UNSPECIFIED = 0
+    RUNNING = 1
+    WAITING = 2
+    SUCCESS = 3
+    EXIT = 4
+    ERROR = 5
+    OVERFLOW = 6
+    OUTDATED = 7
+    WAITING_OUTPUT = 8
+    WAITING_OUTPUT_FOR_EXIT = 9
+    WAITING_OUTPUT_FOR_ERROR = 10
 
 @dataclass
 class DataPackageModule(ThreadSafeClass):
@@ -18,27 +31,25 @@ class DataPackageModule(ThreadSafeClass):
         id (str):                               ID of the DP module.
         module_id (str):                        ID of the module.
         module_name (str):                      Name of the module.
-        running (bool):                         Indicates if the module is currently running.
+        status (Status):                        Status of the module.
         start_time (float):                     Timestamp when the module started.
         end_time (float):                       Timestamp when the module finished.
         waiting_time (float):                   Time spent waiting for the mutex to unlock.
         total_time (float):                     Total time spent on the data package processing.
         sub_modules (List[DataPackageModule]):  List of sub-modules that processed the data package.
         message (str):                          Informational message.
-        success (bool):                         Indicates if the processing was successful.
         error (Union[Exception, Error, None]):  Error encountered during processing, if any.
     """
     _id: str = field(default_factory=lambda: "DP-M-" + str(uuid.uuid4()))
     _module_id: str = ""
     _module_name: str = ""
-    _running: bool = False
+    _status: Status = Status.UNSPECIFIED
     _start_time: float = 0.0
     _end_time: float = 0.0
     _waiting_time: float = 0.0
     _total_time: float = 0.0
     _sub_modules: List['DataPackageModule'] = field(default_factory=list)
     _message: str = ""
-    _success: bool = True
     _error: Optional[Error] = None
     
     _ThreadSafeClass__immutable_attributes: List[str] = field(default_factory=lambda: [])
@@ -68,12 +79,12 @@ class DataPackageModule(ThreadSafeClass):
         self._set_attribute('module_name', value)
     
     @property
-    def running(self) -> bool:
-        return self._get_attribute('running')
+    def status(self) -> Status:
+        return self._get_attribute('status')
     
-    @running.setter
-    def running(self, value: bool) -> None:
-        self._set_attribute('running', value)
+    @status.setter
+    def status(self, value: Status) -> None:
+        self._set_attribute('status', value)
     
     @property
     def start_time(self) -> float:
@@ -124,14 +135,6 @@ class DataPackageModule(ThreadSafeClass):
         self._set_attribute('message', value)
     
     @property
-    def success(self) -> bool:
-        return self._get_attribute('success')
-    
-    @success.setter
-    def success(self, value: bool) -> None:
-        self._set_attribute('success', value)
-    
-    @property
     def error(self) -> Optional[Error]:
         return self._get_attribute('error')
     
@@ -151,7 +154,7 @@ class DataPackageModule(ThreadSafeClass):
         self.id = grpc_module.id
         self.module_id = grpc_module.module_id
         self.module_name = grpc_module.module_name
-        self.running = grpc_module.running
+        self.status = Status[data_pb2.Status.Name(grpc_module.status)]
         self.start_time = grpc_module.start_time
         self.end_time = grpc_module.end_time
         self.waiting_time = grpc_module.waiting_time
@@ -168,7 +171,6 @@ class DataPackageModule(ThreadSafeClass):
                     self.sub_modules.append(new_sub_module)
 
         self.message = grpc_module.message
-        self.success = grpc_module.success
         if grpc_module.error and grpc_module.error.ListFields():
             if self.error is None:
                 self.error = Error()
@@ -186,14 +188,13 @@ class DataPackageModule(ThreadSafeClass):
         grpc_module.id = self.id
         grpc_module.module_id = self.module_id
         grpc_module.module_name = self.module_name
-        grpc_module.running = self.running
+        grpc_module.status = data_pb2.Status.Value(self.status.name)
         grpc_module.start_time = self.start_time
         grpc_module.end_time = self.end_time
         grpc_module.waiting_time = self.waiting_time
         grpc_module.total_time = self.total_time
         grpc_module.sub_modules.extend([module.to_grpc() for module in self.sub_modules])
         grpc_module.message = self.message
-        grpc_module.success = self.success
         if isinstance(self.error, Exception):
             self.error = exception_to_error(self.error)
         if self.error:
@@ -212,7 +213,7 @@ class DataPackagePhase(ThreadSafeClass):
         id (str):                           ID of the DP phase.
         phase_id (str):                     ID of the phase.
         phase_name (str):                   Name of the phase.
-        running (bool):                     Indicates if the phase is currently running.
+        status (Status):                    Status of the phase.
         start_time (float):                 Timestamp when the phase started.
         end_time (float):                   Timestamp when the phase finished.
         total_time (float):                 Total time spent on the phase.
@@ -221,7 +222,7 @@ class DataPackagePhase(ThreadSafeClass):
     _id: str = field(default_factory=lambda: "DP-PP-" + str(uuid.uuid4()))
     _phase_id: str = ""
     _phase_name: str = ""
-    _running: bool = False
+    _status: Status = Status.UNSPECIFIED
     _start_time: float = 0.0
     _end_time: float = 0.0
     _total_time: float = 0.0
@@ -255,12 +256,12 @@ class DataPackagePhase(ThreadSafeClass):
         self._set_attribute('phase_name', value)
     
     @property
-    def running(self) -> bool:
-        return self._get_attribute('running')
+    def status(self) -> Status:
+        return self._get_attribute('status')
     
-    @running.setter
-    def running(self, value: bool) -> None:
-        self._set_attribute('running', value)
+    @status.setter
+    def status(self, value: Status) -> None:
+        self._set_attribute('status', value)
     
     @property
     def start_time(self) -> float:
@@ -304,7 +305,7 @@ class DataPackagePhase(ThreadSafeClass):
         self.id = grpc_phase.id
         self.phase_id = grpc_phase.phase_id
         self.phase_name = grpc_phase.phase_name
-        self.running = grpc_phase.running
+        self.status = Status[data_pb2.Status.Name(grpc_phase.status)]
         self.start_time = grpc_phase.start_time
         self.end_time = grpc_phase.end_time
         self.total_time = grpc_phase.total_time
@@ -329,7 +330,7 @@ class DataPackagePhase(ThreadSafeClass):
         grpc_phase.id = self.id
         grpc_phase.phase_id = self.phase_id
         grpc_phase.phase_name = self.phase_name
-        grpc_phase.running = self.running
+        grpc_phase.status = data_pb2.Status.Value(self.status.name)
         grpc_phase.start_time = self.start_time
         grpc_phase.end_time = self.end_time
         grpc_phase.total_time = self.total_time
@@ -349,7 +350,7 @@ class DataPackageController(ThreadSafeClass):
         mode (str):                         Type of phase execution (e.g., NOT_PARALLEL, ORDER_BY_SEQUENCE, FIRST_WINS, NO_ORDER).
         workers (int):                      Number of workers used for executing phases in parallel. 0 means no multi-threading.
         sequence_number (int):              Sequence number of the data package.
-        running (bool):                     Indicates if the phase execution is currently running.
+        status (Status):                    Status of the controller.
         start_time (float):                 Timestamp when the phase execution started.
         end_time (float):                   Timestamp when the phase execution finished.
         _input_waiting_time (float):        Time waiting for teh data package to be processed.
@@ -363,7 +364,7 @@ class DataPackageController(ThreadSafeClass):
     _mode: str = "NOT_PARALLEL"
     _workers: int = 1
     _sequence_number: int = -1
-    _running: bool = False
+    _status: Status = Status.UNSPECIFIED
     _start_time: float = 0.0
     _end_time: float = 0.0
     _input_waiting_time: float = 0.0
@@ -422,12 +423,12 @@ class DataPackageController(ThreadSafeClass):
         self._set_attribute('sequence_number', value)
     
     @property
-    def running(self) -> bool:
-        return self._get_attribute('running')
+    def status(self) -> Status:
+        return self._get_attribute('status')
     
-    @running.setter
-    def running(self, value: bool) -> None:
-        self._set_attribute('running', value)
+    @status.setter
+    def status(self, value: Status) -> None:
+        self._set_attribute('status', value)
     
     @property
     def start_time(self) -> float:
@@ -477,28 +478,28 @@ class DataPackageController(ThreadSafeClass):
     def phases(self, value: List[DataPackagePhase]) -> None:
         self._set_attribute('phases', value)
 
-    def set_from_grpc(self, grpc_execution: data_pb2.DataPackageController) -> None:
+    def set_from_grpc(self, grpc_controller: data_pb2.DataPackageController) -> None:
         """
         Updates the current instance with data from a gRPC phase execution.
         """
         temp_immutable_attributes = self._ThreadSafeClass__immutable_attributes
         self._ThreadSafeClass__immutable_attributes = []
 
-        self.id = grpc_execution.id
-        self.controller_id = grpc_execution.controller_id
-        self.controller_name = grpc_execution.controller_name
-        self.mode = grpc_execution.mode
-        self.workers = grpc_execution.workers
-        self.sequence_number = grpc_execution.sequence_number
-        self.running = grpc_execution.running
-        self.start_time = grpc_execution.start_time
-        self.end_time = grpc_execution.end_time
-        self.input_waiting_time = grpc_execution.input_waiting_time
-        self.output_waiting_time = grpc_execution.output_waiting_time
-        self.total_time = grpc_execution.total_time
+        self.id = grpc_controller.id
+        self.controller_id = grpc_controller.controller_id
+        self.controller_name = grpc_controller.controller_name
+        self.mode = grpc_controller.mode
+        self.workers = grpc_controller.workers
+        self.sequence_number = grpc_controller.sequence_number
+        self.status = Status[data_pb2.Status.Name(grpc_controller.status)]
+        self.start_time = grpc_controller.start_time
+        self.end_time = grpc_controller.end_time
+        self.input_waiting_time = grpc_controller.input_waiting_time
+        self.output_waiting_time = grpc_controller.output_waiting_time
+        self.total_time = grpc_controller.total_time
 
         existing_phases = {phase.id: phase for phase in self.phases}
-        for phase in grpc_execution.phases:
+        for phase in grpc_controller.phases:
             if phase:
                 if phase.id in existing_phases:
                     existing_phases[phase.id].set_from_grpc(phase)
@@ -513,21 +514,21 @@ class DataPackageController(ThreadSafeClass):
         """
         Converts the current instance to a gRPC phase execution.
         """
-        grpc_execution = data_pb2.DataPackageController()
-        grpc_execution.id = self.id
-        grpc_execution.controller_id = self.controller_id
-        grpc_execution.controller_name = self.controller_name
-        grpc_execution.mode = self.mode
-        grpc_execution.workers = self.workers
-        grpc_execution.sequence_number = self.sequence_number
-        grpc_execution.running = self.running
-        grpc_execution.start_time = self.start_time
-        grpc_execution.end_time = self.end_time
-        grpc_execution.input_waiting_time = self.input_waiting_time
-        grpc_execution.output_waiting_time = self.output_waiting_time
-        grpc_execution.total_time = self.total_time
-        grpc_execution.phases.extend([phase.to_grpc() for phase in self.phases])
-        return grpc_execution
+        grpc_controller = data_pb2.DataPackageController()
+        grpc_controller.id = self.id
+        grpc_controller.controller_id = self.controller_id
+        grpc_controller.controller_name = self.controller_name
+        grpc_controller.mode = self.mode
+        grpc_controller.workers = self.workers
+        grpc_controller.sequence_number = self.sequence_number
+        grpc_controller.status = data_pb2.Status.Value(self.status.name)
+        grpc_controller.start_time = self.start_time
+        grpc_controller.end_time = self.end_time
+        grpc_controller.input_waiting_time = self.input_waiting_time
+        grpc_controller.output_waiting_time = self.output_waiting_time
+        grpc_controller.total_time = self.total_time
+        grpc_controller.phases.extend([phase.to_grpc() for phase in self.phases])
+        return grpc_controller
 
 T = TypeVar('T')
 
@@ -543,11 +544,10 @@ class DataPackage(Generic[T], ThreadSafeClass):
         pipeline_instance_id (str):                     ID of the pipeline instance handling this package.
         controllers (List[DataPackageController]):      List of phases processed in the mode of execution.
         data (Optional[T]):                             Actual data contained in the package.
-        running (bool):                                 Indicates if the data package is currently being processed.
+        status (Status):                                Status of the data package.
         start_time (float):                             Timestamp when the data package started processing.
         end_time (float):                               Timestamp when the data package finished processing.
         total_time (float):                             Total time spent processing the data package.
-        success (bool):                                 Indicates if the process was successful.
         errors (List[Optional[Error]]):                 List of errors that occurred during processing.
     """
     _id: str = field(default_factory=lambda: "DP-" + str(uuid.uuid4()), init=False)
@@ -556,11 +556,10 @@ class DataPackage(Generic[T], ThreadSafeClass):
     _pipeline_instance_id: str = ""
     _controllers: List[DataPackageController] = field(default_factory=list)
     _data: Optional[T] = None
-    _running: bool = False
+    _status: Status = Status.UNSPECIFIED
     _start_time: float = 0.0
     _end_time: float = 0.0
     _total_time: float = 0.0
-    _success: bool = True
     _errors: List[Optional[Error]] = field(default_factory=list)
 
     # Immutable attributes
@@ -615,12 +614,12 @@ class DataPackage(Generic[T], ThreadSafeClass):
         self._set_attribute('data', value)
     
     @property
-    def running(self) -> bool:
-        return self._get_attribute('running')
+    def status(self) -> Status:
+        return self._get_attribute('status')
     
-    @running.setter
-    def running(self, value: bool) -> None:
-        self._set_attribute('running', value)
+    @status.setter
+    def status(self, value: Status) -> None:
+        self._set_attribute('status', value)
     
     @property
     def start_time(self) -> float:
@@ -645,14 +644,6 @@ class DataPackage(Generic[T], ThreadSafeClass):
     @total_time.setter
     def total_time(self, value: float) -> None:
         self._set_attribute('total_time', value)
-    
-    @property
-    def success(self) -> bool:
-        return self._get_attribute('success')
-    
-    @success.setter
-    def success(self, value: bool) -> None:
-        self._set_attribute('success', value)
     
     @property
     def errors(self) -> List[Optional[Error]]:
@@ -690,11 +681,10 @@ class DataPackage(Generic[T], ThreadSafeClass):
                     self.controllers.append(new_controller)
 
         self.data = pickle.loads(grpc_package.data)
-        self.running = grpc_package.running
+        self.status = Status[data_pb2.Status.Name(grpc_package.status)]
         self.start_time = grpc_package.start_time
         self.end_time = grpc_package.end_time
         self.total_time = grpc_package.total_time
-        self.success = grpc_package.success
 
         existing_errors = {error.id: error for error in self.errors if error}
         for error in grpc_package.errors:
@@ -729,10 +719,9 @@ class DataPackage(Generic[T], ThreadSafeClass):
                         ) from e           
             else:
                 raise e
-        grpc_package.running = self.running
+        grpc_package.status = data_pb2.Status.Value(self.status.name)
         grpc_package.start_time = self.start_time
         grpc_package.end_time = self.end_time
         grpc_package.total_time = self.total_time
-        grpc_package.success = self.success
         grpc_package.errors.extend([error.to_grpc() for error in self.errors if error])
         return grpc_package

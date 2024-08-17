@@ -1,13 +1,8 @@
-# main.py
-
-from typing import List
-
-
 def main() -> None:
     import random
     import threading
-    from typing import Union
-    from stream_pipeline.data_package import DataPackageController, DataPackagePhase, DataPackageModule
+    from typing import Union, List
+    from stream_pipeline.data_package import DataPackageController, DataPackagePhase, DataPackageModule, Status
     from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
     from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
     from prometheus_client import start_http_server
@@ -28,7 +23,6 @@ def main() -> None:
     class DataValidationModule(ExecutionModule):
         def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             if dp.data and dp.data.key:
-                dpm.success = True
                 dpm.message = "Validation succeeded"
             else:
                 raise ValueError("Validation failed: key missing")
@@ -47,10 +41,9 @@ def main() -> None:
             if dp.data:
                 if dp.data.key:
                     dp.data.key = dp.data.key.upper()
-                    dpm.success = True
                     dpm.message = "Transformation succeeded"
                 else:
-                    dpm.success = False
+                    dpm.status = Status.EXIT
                     dpm.message = "Transformation failed: key missing"
 
     class DataConditionModule(ConditionModule):
@@ -63,14 +56,12 @@ def main() -> None:
         def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             if dp.data:
                 dp.data.status = "success"
-                dpm.success = True
                 dpm.message = "Condition true: success"
 
     class FailureModule(ExecutionModule):
         def execute(self, dp: DataPackage[Data], dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
             if dp.data:
                 dp.data.status = "failure"
-                dpm.success = True
                 dpm.message = "Condition false: failure"
 
     class RandomExit(ExecutionModule):
@@ -78,10 +69,9 @@ def main() -> None:
             list1 = [True, True, True, True, True, False]
             randombool = random.choice(list1)
             if randombool:
-                dpm.success = True
                 dpm.message = "Random exit: success"
             else:
-                dpm.success = False
+                dpm.status = Status.EXIT
                 dpm.message = "Random exit: failure"
 
     # Setting up the processing pipeline
@@ -107,12 +97,11 @@ def main() -> None:
                     name="c2-phase1",
                     modules=[
                     DataConditionModule(SuccessModule(), FailureModule()),
-                    RandomExit(),
                 ]),
             ],
         ),
         PipelineController(
-            mode=ControllerMode.ORDER_BY_SEQUENCE,
+            mode=ControllerMode.FIRST_WINS,
             max_workers=4,
             queue_size=2,
             name="controller3",
@@ -122,6 +111,7 @@ def main() -> None:
                     modules=[
                     CombinationModule([
                         CombinationModule([
+                            RandomExit(),
                             DataTransformationModule(),
                             ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
                         ], ModuleOptions(
@@ -159,6 +149,12 @@ def main() -> None:
         print(f"OVERFLOWN: {dp.data}")
         with counter_mutex:
             counter = counter + 1
+            
+    def outdated_callback(dp: DataPackage[Data]) -> None:
+        nonlocal counter, counter_mutex
+        print(f"OUTDATED: {dp.data}")
+        with counter_mutex:
+            counter = counter + 1
 
     def error_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
@@ -168,7 +164,7 @@ def main() -> None:
 
     # Function to execute the processing pipeline
     def process_data(data: Data) -> Union[DataPackage, None]:
-        return pipeline.execute(data, pip_ex_id, callback, exit_callback, overflown_callback, error_callback)
+        return pipeline.execute(data, pip_ex_id, callback, exit_callback, overflown_callback, outdated_callback, error_callback)
 
     # Example data
     data_list: List[Data] = [

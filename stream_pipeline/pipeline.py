@@ -8,17 +8,18 @@ import time
 from stream_pipeline.error import exception_to_error
 from .module_classes import Module
 import threading
-from typing import Callable, Dict, Generic, List, Optional, Sequence, TypeVar, Union
+from typing import Callable, Dict, Generic, List, Optional, Sequence, Tuple, TypeVar, Union
 from enum import Enum
 import uuid
 from prometheus_client import Gauge, Summary, Counter
 
-from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController, Status
 
 PIPELINE_INPUT_FLOWRATE = Counter("pipeline_input_flowrate", "The flowrate of the pipeline input", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 PIPELINE_OUTPUT_FLOWRATE = Counter("pipeline_output_flowrate", "The flowrate of the pipeline output", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 PIPELINE_EXIT_FLOWRATE = Counter("pipeline_exit_flowrate", "The flowrate of the pipeline exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 PIPELINE_OVERFLOW_FLOWRATE = Counter("pipeline_overflow_flowrate", "The flowrate of the pipeline overflow", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_OUTDATED_FLOWRATE = Counter("pipeline_outdated_flowrate", "The flowrate of DP which are outdated", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 PIPELINE_ERROR_FLOWRATE = Counter("pipeline_error_flowrate", "The flowrate of the pipeline error", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 
 PIPELINE_TOTAL_TIME = Summary("pipeline_total_time", "The total time of the pipeline", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
@@ -29,6 +30,7 @@ CONTROLLER_INPUT_FLOWRATE = Counter("controller_input_flowrate", "The flowrate o
 CONTROLLER_OUTPUT_FLOWRATE = Counter("controller_output_flowrate", "The flowrate of the controller output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_EXIT_FLOWRATE = Counter("controller_exit_flowrate", "The flowrate of the controller exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_OVERFLOW_FLOWRATE = Counter("controller_overflow_flowrate", "The flowrate of the controller overflow", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OUTDATED_FLOWRATE = Counter("controller_outdated_flowrate", "The flowrate of DP which are outdated", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_ERROR_FLOWRATE = Counter("controller_error_flowrate", "The flowrate of the controller error", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 
 CONTROLLER_INPUT_WAITING_TIME = Summary("controller_input_waiting_time", "The waiting time of the controller input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
@@ -83,7 +85,7 @@ class PipelinePhase:
 
         self._lock = threading.Lock()
 
-    def execute(self, data_package: DataPackage, data_package_controller: DataPackageController) -> None:
+    def execute(self, data_package: DataPackage, data_package_controller: DataPackageController) -> DataPackagePhase:
         start_time = time.time()
         with self._lock:
             PHASE_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
@@ -93,31 +95,44 @@ class PipelinePhase:
         with self._lock:
             dp_phase.phase_id=self._id
             dp_phase.phase_name=self._name
-        dp_phase.running=True
+        dp_phase.status = Status.RUNNING
         dp_phase.start_time=start_time
             
         data_package_controller.phases.append(dp_phase)
 
         for module in self._modules:
-            module.run(dp=data_package, dpc=data_package_controller, dpp=dp_phase)
-            if not data_package.success:
+            dpm = module.run(dp=data_package, dpc=data_package_controller, dpp=dp_phase)
+            if not dpm.status == Status.SUCCESS:
+                dp_phase.status = dpm.status
                 break
 
+        if dp_phase.status == Status.RUNNING:
+            dp_phase.status = Status.SUCCESS
+
         ent_time = time.time()
-        dp_phase.running = False
         dp_phase.end_time = ent_time
         total_time = ent_time - start_time
         dp_phase.total_time = total_time
 
         with self._lock:
-            if data_package.success:
+            if dp_phase.status == Status.SUCCESS:
                 PHASE_OUTPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
-            elif len(data_package.errors) == 0:
+            elif dp_phase.status == Status.EXIT:
                 PHASE_EXIT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
-            else:
+            elif dp_phase.status == Status.ERROR:
                 PHASE_ERROR_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc
+            else:
+                try:
+                    raise ValueError("Status not recognized.")
+                except ValueError as e:
+                    dp_phase.status = Status.ERROR
+                    data_package.errors.append(exception_to_error(e))
+                    
+            
             PHASE_PROCESSING_COUNT.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).dec()
             PHASE_TOTAL_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).observe(total_time)
+            
+        return dp_phase
 
     def __deepcopy__(self, memo: Dict) -> 'PipelinePhase':
         copied_phase = PipelinePhase(
@@ -131,8 +146,8 @@ class OrderTracker:
     def __init__(self) -> None:
         self._next_sequence_number = 0
         self._last_finished_sequence_number = -1
-        self._data_packages: Dict[int, Optional[DataPackage]] = {}
-        self._finished_data_packages: Dict[int, Optional[DataPackage]] = {}
+        self._data_packages: Dict[int, Optional[Tuple[DataPackage, DataPackageController]]] = {}
+        self._finished_data_packages: Dict[int, Optional[Tuple[DataPackage, DataPackageController]]] = {}
 
         self._lock = threading.Lock()
 
@@ -158,9 +173,9 @@ class OrderTracker:
             raise ValueError("Sequence number cannot be greater or equal than the next sequence number or smaller than the last finished sequence number.")
         self._last_finished_sequence_number = sequence_number
 
-    def add_data(self, dp: DataPackage) -> None:
+    def add_data(self, dp: DataPackage, dpc: DataPackageController) -> None:
         with self._lock:
-            self._data_packages[self._next_sequence_number] = dp
+            self._data_packages[self._next_sequence_number] = (dp, dpc)
             self._next_sequence_number += 1
     
     def remove_data(self, sequence_number: int) -> None:
@@ -185,12 +200,12 @@ class OrderTracker:
         """
         with self._lock:
             if sequence_number in self._data_packages:
-                data_package = self._data_packages.pop(sequence_number)
-                self._finished_data_packages[sequence_number] = data_package
+                dp_and_dpc_or_none = self._data_packages.pop(sequence_number)
+                self._finished_data_packages[sequence_number] = dp_and_dpc_or_none
             else:
                 raise ValueError("Sequence number not found in data packages.")
 
-    def pop_finished_data_packages(self, mode: ControllerMode) -> List[DataPackage]:
+    def pop_finished_data_packages(self, mode: ControllerMode) -> Tuple[List[Tuple[DataPackage, DataPackageController]], List[Tuple[DataPackage, DataPackageController]]]:
         """
         NO_ORDER:
             Example:
@@ -212,41 +227,45 @@ class OrderTracker:
                 Queue left: []
         """
         with self._lock:
-            finished_data_packages: List[DataPackage] = []
+            finished_data_packages: List[Tuple[DataPackage, DataPackageController]] = []
+            outdated_data_packages: List[Tuple[DataPackage, DataPackageController]] = []
 
             if (mode == ControllerMode.NO_ORDER):
-                for sequence_number, data_package in self._finished_data_packages.items():
-                    if data_package is None:
+                for sequence_number, dp_and_dpc in self._finished_data_packages.items():
+                    if dp_and_dpc is None:
                         continue
-                    finished_data_packages.append(data_package)
+                    finished_data_packages.append(dp_and_dpc)
                 self._finished_data_packages = {}
                     
             elif mode == ControllerMode.ORDER_BY_SEQUENCE or mode == ControllerMode.NOT_PARALLEL:
                 current_sequence = self._last_finished_sequence_number + 1
 
                 while current_sequence in self._finished_data_packages:
-                    data_package = self._finished_data_packages.pop(current_sequence)
+                    dp_and_dpc = self._finished_data_packages.pop(current_sequence)
                     self._last_finished_sequence_number = current_sequence
                     current_sequence = current_sequence + 1
-                    if data_package is None:
+                    if dp_and_dpc is None:
                         continue
-                    finished_data_packages.append(data_package)
+                    finished_data_packages.append(dp_and_dpc)
 
             elif mode == ControllerMode.FIRST_WINS:
                 # find each dp which has a bigger sequence number than the last finished sequence number
                 last_sequence_number = self._last_finished_sequence_number + 1
-                for sequence_number, data_package in self._finished_data_packages.items():
+                for sequence_number, dp_and_dpc in self._finished_data_packages.items():
+                    if dp_and_dpc is None:
+                        continue
+                    
                     if sequence_number >= last_sequence_number:
                         self._last_finished_sequence_number = sequence_number
                         last_sequence_number = sequence_number + 1
-                        if data_package is None:
-                            continue
-                        finished_data_packages.append(data_package)
+                        finished_data_packages.append(dp_and_dpc)
+                    else:
+                        outdated_data_packages.append(dp_and_dpc)
 
                 # remove the data packages from the finished queue
                 self._finished_data_packages.clear()
                 
-            return finished_data_packages
+            return finished_data_packages, outdated_data_packages
 
 @dataclass
 class QueueData:
@@ -280,7 +299,7 @@ class PipelineController:
 
         self._lock = threading.Lock()
 
-    def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], overflow_callback: Callable[[DataPackage], None]) -> None:
+    def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Callable[[DataPackage], None], overflow_callback: Callable[[DataPackage], None], outdated_callback: Callable[[DataPackage], None], error_callback: Callable[[DataPackage], None]) -> None:
         start_time = time.time()
         with self._lock:
             CONTROLLER_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
@@ -292,13 +311,13 @@ class PipelineController:
             dp_phase_con.mode=controller_mode_to_str(self._mode)
             dp_phase_con.workers=self._max_workers
             dp_phase_con.sequence_number=self._order_tracker.get_next_sequence_number()
-        dp_phase_con.running=True
+        dp_phase_con.status = Status.RUNNING
         dp_phase_con.start_time=start_time
 
         # print(f"Starting {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
         data_package.controllers.append(dp_phase_con)
 
-        self._order_tracker.add_data(data_package)
+        self._order_tracker.add_data(data_package, dp_phase_con)
         
         start_context = threading.current_thread().name
 
@@ -331,6 +350,7 @@ class PipelineController:
                     threading.current_thread().start_context = start_context # type: ignore
                     
                     try:
+                        dp_phase_con.status = Status.RUNNING
                         waiting_time = time.time() - start_time
                         dp_phase_con.input_waiting_time = waiting_time
                         with self._lock:
@@ -341,56 +361,93 @@ class PipelineController:
                             temp_phases = self._phases.copy()
 
                         for phase in temp_phases:
-                            phase.execute(data_package, dp_phase_con)
-                            if not data_package.success:
+                            dpp = phase.execute(data_package, dp_phase_con)
+                            if not dpp.status == Status.SUCCESS:
+                                dp_phase_con.status = dpp.status
                                 break
 
                         # print(f"Phase {self._name} finished {data_package.data} with sequence number {dp_phase_ex.sequence_number}: {id(self._order_tracker)}")
 
                     except Exception as e:
                         # print(exception_to_error(e))
-                        data_package.success = False
+                        dp_phase_con.status = Status.ERROR
                         data_package.errors.append(exception_to_error(e))
+
+                    if dp_phase_con.status == Status.RUNNING:
+                        dp_phase_con.status = Status.WAITING_OUTPUT
+                    elif dp_phase_con.status == Status.EXIT:
+                        with self._order_tracker.instance_lock:
+                            self._order_tracker.remove_data(dp_phase_con.sequence_number)
+                        exit_callback(data_package)
+                        continue
+                    elif dp_phase_con.status == Status.ERROR:
+                        with self._order_tracker.instance_lock:
+                            self._order_tracker.remove_data(dp_phase_con.sequence_number)
+                        error_callback(data_package)
+                        continue
+                    else:
+                        try:
+                            raise ValueError("Status not recognized.")
+                        except ValueError as e:
+                            dp_phase_con.status = Status.ERROR
+                            data_package.errors.append(exception_to_error(e))
 
                     dp_phase_con.end_time = time.time() # This will set the end time temporarily (bad code). It will be overriden in the next block.
                     CONTROLLER_OUTPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
                     with self._order_tracker.instance_lock:
                         # print(f"C{len(queue_data.data_package.controller)} Finished {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
                         self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
-                        finished_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
+                        finished_data_packages, outdated_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
                         # print(f"C{len(queue_data.data_package.controller)} {len(finished_data_packages)}")
-                        for dp in finished_data_packages:
-                            # find controller in dp.controllers with id self._id
-                            con: Optional[DataPackageController] = None
-                            for co in dp.controllers:
-                                if co.controller_id == self._id:
-                                    con = co
-                                    break
-                            if con is None:
-                                raise ValueError("Controller not found in DataPackage.")
+                        for (fdp, fdpc) in finished_data_packages:
+                            
+                            if fdpc.status == Status.WAITING_OUTPUT:
+                                fdpc.status = Status.SUCCESS
+                            else:
+                                try:
+                                    raise ValueError("Status not recognized.")
+                                except ValueError as e:
+                                    fdpc.status = Status.ERROR
+                                    fdp.errors.append(exception_to_error(e))
                             
                             end_time = time.time()
-                            total_time = end_time - dp.start_time
-                            output_waiting_time = end_time - con.end_time # This is why the end time was temporarily set.
-                            con.output_waiting_time = output_waiting_time
-                            con.end_time = end_time # This is where the end time will be overriden. (bad code)
-                            con.total_time = total_time
-                            CONTROLLER_OUTPUT_WAITING_TIME.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).observe(output_waiting_time)
-                            CONTROLLER_OUTPUT_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
+                            total_time = end_time - fdp.start_time
+                            output_waiting_time = end_time - fdpc.end_time # This is why the end time was temporarily set.
+                            fdpc.output_waiting_time = output_waiting_time
+                            fdpc.end_time = end_time # This is where the end time will be overriden. (bad code)
+                            fdpc.total_time = total_time
+                            CONTROLLER_OUTPUT_WAITING_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(output_waiting_time)
+                            CONTROLLER_OUTPUT_WAITING_COUNTER.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).dec()
                             
                             with self._lock:
-                                if dp.success:
-                                    CONTROLLER_OUTPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
-                                elif len(dp.errors) == 0:
-                                    CONTROLLER_EXIT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
+                                if fdpc.status == Status.SUCCESS:
+                                    CONTROLLER_OUTPUT_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
+                                elif fdpc.status == Status.EXIT:
+                                    CONTROLLER_EXIT_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
                                 else:
-                                    CONTROLLER_ERROR_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
-                                CONTROLLER_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
-                                CONTROLLER_TOTAL_TIME.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).observe(total_time)
-
-                            dp_phase_con.running = False
+                                    CONTROLLER_ERROR_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
+                                CONTROLLER_PROCESSING_COUNT.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).dec()
+                                CONTROLLER_TOTAL_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                             
-                            callback(dp)
+                            callback(fdp)
+                            
+                        for (odp, odpc) in outdated_data_packages:
+                            if odpc.status == Status.WAITING_OUTPUT:
+                                odpc.status = Status.OUTDATED
+                            else:
+                                try:
+                                    raise ValueError("Status not recognized.")
+                                except ValueError as e:
+                                    odpc.status = Status.ERROR
+                                    odp.errors.append(exception_to_error(e))
+                            
+                            end_time = time.time()
+                            total_time = end_time - odp.start_time
+                            output_waiting_time = end_time - odpc.end_time
+                            
+                            CONTROLLER_OUTDATED_FLOWRATE.labels(odp.pipeline_name, odp.pipeline_id, odp.pipeline_instance_id, self._name, self._id).inc()
+                            
+                            outdated_callback(odp)
                             
             except Exception as e:
                 print(exception_to_error(e))
@@ -404,6 +461,7 @@ class PipelineController:
             with self._lock:
                 CONTROLLER_INPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
             
+            dp_phase_con.status = Status.WAITING
             self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time))
 
             if popped_value:
@@ -416,6 +474,7 @@ class PipelineController:
 
         if popped_value:
             dp: DataPackage = popped_value.data_package
+            popped_value.dp_phase_con.status = Status.OVERFLOW
             with self._lock:
                 CONTROLLER_OVERFLOW_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
                 CONTROLLER_INPUT_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
@@ -450,7 +509,7 @@ class PipelineInstance:
 
         self._lock = threading.Lock()
 
-    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, overflow_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
+    def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, overflow_callback: Optional[Callable[[DataPackage], None]] = None, outdated_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
         with self._lock:
             PIPELINE_INPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             PIPELINE_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
@@ -466,7 +525,6 @@ class PipelineInstance:
             dp.end_time = end_time
             total_time = end_time - dp.start_time
             dp.total_time = total_time
-            dp.running = False
             with self._lock:
                 PIPELINE_TOTAL_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(total_time)
                 PIPELINE_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, self._id).dec()
@@ -474,6 +532,7 @@ class PipelineInstance:
         def new_success_callback(dp: DataPackage) -> None:
             nonlocal callback
             end_dp(dp)
+            dp.status = Status.SUCCESS
             with self._lock:
                 PIPELINE_OUTPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             callback(dp)
@@ -481,6 +540,7 @@ class PipelineInstance:
         def new_exit_callback(dp: DataPackage) -> None:
             nonlocal exit_callback
             end_dp(dp)
+            dp.status = Status.EXIT
             with self._lock:
                 PIPELINE_EXIT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             if exit_callback:
@@ -489,14 +549,25 @@ class PipelineInstance:
         def new_overflow_callback(dp: DataPackage) -> None:
             nonlocal overflow_callback
             end_dp(dp)
+            dp.status = Status.OVERFLOW
             with self._lock:
                 PIPELINE_OVERFLOW_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             if overflow_callback:
                 overflow_callback(dp)
+                
+        def new_outdated_callback(dp: DataPackage) -> None:
+            nonlocal outdated_callback
+            end_dp(dp)
+            dp.status = Status.OUTDATED
+            with self._lock:
+                PIPELINE_OUTDATED_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+            if outdated_callback:
+                outdated_callback(dp)
         
         def new_error_callback(dp: DataPackage) -> None:
             nonlocal error_callback
             end_dp(dp)
+            dp.status = Status.ERROR
             with self._lock:
                 PIPELINE_ERROR_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             if error_callback:
@@ -511,19 +582,13 @@ class PipelineInstance:
 
             # print(f"{dp.data} {len(dp.phases)}/{len(phases)}({len(self._phases_execution_queue[dp.id])}) {left_phases}")
 
-            if dp.success:
-                if len(self._controller_queue[dp.id]) > 0:
-                    controller = self._controller_queue[dp.id].pop(0)
-                    controller.execute(dp, new_callback, new_overflow_callback)
-                    # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
-                    return
-
-            if dp.success:
-                new_success_callback(dp)
-            elif len(dp.errors) == 0:
-                new_exit_callback(dp)
-            else:
-                new_error_callback(dp)
+            if len(self._controller_queue[dp.id]) > 0:
+                controller = self._controller_queue[dp.id].pop(0)
+                controller.execute(dp, new_callback, new_exit_callback, new_overflow_callback, new_outdated_callback, new_error_callback)
+                # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
+                return
+            
+            new_success_callback(dp)
 
         new_callback(dp)
 
@@ -599,7 +664,7 @@ class Pipeline(Generic[T]):
                 del self._pipeline_instances[ex_id]
                 del self._instances_controllers[ex_id]
 
-    def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], exit_callback: Optional[Callable[[DataPackage[T]], None]] = None, overflow_callback: Optional[Callable[[DataPackage[T]], None]] = None, error_callback: Optional[Callable[[DataPackage[T]], None]] = None) -> DataPackage[T]:
+    def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], exit_callback: Optional[Callable[[DataPackage[T]], None]] = None, overflow_callback: Optional[Callable[[DataPackage[T]], None]] = None, outdated_callback: Optional[Callable[[DataPackage[T]], None]] = None, error_callback: Optional[Callable[[DataPackage[T]], None]] = None) -> DataPackage[T]:
         ex = self._get_instance(instance_id)
         if not ex:
             raise ValueError("Instance ID not found")
@@ -617,6 +682,6 @@ class Pipeline(Generic[T]):
         dp.data=data
         dp.start_time=time.time()
 
-        dp.running = True
-        ex.execute(temp_phases, dp, callback, exit_callback, overflow_callback, error_callback)
+        dp.status = Status.RUNNING
+        ex.execute(temp_phases, dp, callback, exit_callback, overflow_callback, outdated_callback, error_callback)
         return dp

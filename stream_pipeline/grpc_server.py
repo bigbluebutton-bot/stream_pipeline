@@ -8,7 +8,7 @@ from .data_package import DataPackage, DataPackageController, DataPackagePhase, 
 from .error import exception_to_error
 
 from .module_classes import Module 
-from .data_pb2 import ReturnDPandError, RequestDP
+from .data_pb2 import ReturnDPandError, RequestDP, Error
 from .data_pb2_grpc import ModuleServiceServicer as ModuleServiceServicerBase, add_ModuleServiceServicer_to_server
 
 T = TypeVar('T')
@@ -25,15 +25,15 @@ class ModuleServiceServicer(Generic[T], ModuleServiceServicerBase):
             dp, dpc, dpp, dpm = self.grpc_to_normal(request_grpc)
             
             # Run the module with data_package and data_package_module
-            self.module.run(dp, dpc, dpp, dpm)
+            sub_dpm = self.module.run(dp, dpc, dpp, dpm)
             
             # Convert the result back to gRPC response
-            return_dp_and_error = self.normal_to_grpc(dp)
+            return_dp_and_error = self.normal_to_grpc(request=dp, sub_module=sub_dpm, error=None)
             return return_dp_and_error
         except Exception as e:
             # In case of any exception, convert it to a gRPC response
             try:
-                return_dp_and_error = self.normal_to_grpc(dp, e)
+                return_dp_and_error = self.normal_to_grpc(request=dp, sub_module=None, error=e)
                 return return_dp_and_error
             except Exception as nested_exception:
                 return_dp_and_error = ReturnDPandError()
@@ -94,19 +94,21 @@ class ModuleServiceServicer(Generic[T], ModuleServiceServicerBase):
         return dp, dpc, dpp, dpm
 
     # Function to convert normal objects to gRPC messages
-    def normal_to_grpc(self, request: Union[DataPackage[T], None], error: Union[None, Exception] = None) -> ReturnDPandError:
-        error_grpc: Union[None, Any] = None
+    def normal_to_grpc(self, request: Union[DataPackage[T], None], sub_module: Optional[DataPackageModule], error: Optional[Exception] = None) -> ReturnDPandError:
+        error_grpc: Optional[Error] = None
         if error:
             error = exception_to_error(error)
             if error:
                 error_grpc = error.to_grpc()
-        
+
+        sub_dpm_id = sub_module.id if sub_module else ""        
 
         request_grpc = request.to_grpc() if request else None
 
         return_dp_and_error = ReturnDPandError()
         if request_grpc:
             return_dp_and_error.data_package.CopyFrom(request_grpc)
+        return_dp_and_error.data_package_module_id = sub_dpm_id
         if error_grpc:
             return_dp_and_error.error.CopyFrom(error_grpc)
         return return_dp_and_error
