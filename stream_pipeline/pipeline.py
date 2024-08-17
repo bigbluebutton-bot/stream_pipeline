@@ -299,7 +299,7 @@ class PipelineController:
 
         self._lock = threading.Lock()
 
-    def execute(self, data_package: DataPackage, callback: Callable[[DataPackage, Optional[DataPackageController]], None], overflow_callback: Callable[[DataPackage], None], outdated_callback: Callable[[DataPackage], None]) -> None:
+    def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Callable[[DataPackage], None], overflow_callback: Callable[[DataPackage], None], outdated_callback: Callable[[DataPackage], None], error_callback: Callable[[DataPackage], None]) -> None:
         start_time = time.time()
         with self._lock:
             CONTROLLER_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
@@ -376,9 +376,15 @@ class PipelineController:
                     if dp_phase_con.status == Status.RUNNING:
                         dp_phase_con.status = Status.WAITING_OUTPUT
                     elif dp_phase_con.status == Status.EXIT:
-                        dp_phase_con.status = Status.WAITING_OUTPUT_FOR_EXIT
+                        with self._order_tracker.instance_lock:
+                            self._order_tracker.remove_data(dp_phase_con.sequence_number)
+                        exit_callback(data_package)
+                        continue
                     elif dp_phase_con.status == Status.ERROR:
-                        dp_phase_con.status = Status.WAITING_OUTPUT_FOR_ERROR
+                        with self._order_tracker.instance_lock:
+                            self._order_tracker.remove_data(dp_phase_con.sequence_number)
+                        error_callback(data_package)
+                        continue
                     else:
                         try:
                             raise ValueError("Status not recognized.")
@@ -397,10 +403,6 @@ class PipelineController:
                             
                             if fdpc.status == Status.WAITING_OUTPUT:
                                 fdpc.status = Status.SUCCESS
-                            elif fdpc.status == Status.WAITING_OUTPUT_FOR_EXIT:
-                                fdpc.status = Status.EXIT
-                            elif fdpc.status == Status.WAITING_OUTPUT_FOR_ERROR:
-                                fdpc.status = Status.ERROR
                             else:
                                 try:
                                     raise ValueError("Status not recognized.")
@@ -427,15 +429,11 @@ class PipelineController:
                                 CONTROLLER_PROCESSING_COUNT.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).dec()
                                 CONTROLLER_TOTAL_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                             
-                            callback(fdp, fdpc)
+                            callback(fdp)
                             
                         for (odp, odpc) in outdated_data_packages:
                             if odpc.status == Status.WAITING_OUTPUT:
                                 odpc.status = Status.OUTDATED
-                            elif odpc.status == Status.WAITING_OUTPUT_FOR_EXIT:
-                                odpc.status = Status.EXIT
-                            elif odpc.status == Status.WAITING_OUTPUT_FOR_ERROR:
-                                odpc.status = Status.ERROR
                             else:
                                 try:
                                     raise ValueError("Status not recognized.")
@@ -575,7 +573,7 @@ class PipelineInstance:
             if error_callback:
                 error_callback(dp)
 
-        def new_callback(dp: DataPackage, dpc: Optional[DataPackageController] = None) -> None:
+        def new_callback(dp: DataPackage) -> None:
             left_phases = []
             # if not dp.id in self._controller_queue:
             #     return
@@ -584,22 +582,9 @@ class PipelineInstance:
 
             # print(f"{dp.data} {len(dp.phases)}/{len(phases)}({len(self._phases_execution_queue[dp.id])}) {left_phases}")
 
-            if dpc and not dpc.status == Status.SUCCESS:
-                if dpc.status == Status.EXIT:
-                    new_exit_callback(dp)
-                elif dpc.status == Status.ERROR:
-                    new_error_callback(dp)
-                else:
-                    try:
-                        raise ValueError("Status not recognized.")
-                    except ValueError as e:
-                        dp.errors.append(exception_to_error(e))
-                        new_error_callback(dp)
-                return
-
             if len(self._controller_queue[dp.id]) > 0:
                 controller = self._controller_queue[dp.id].pop(0)
-                controller.execute(dp, new_callback, new_overflow_callback, new_outdated_callback)
+                controller.execute(dp, new_callback, new_exit_callback, new_overflow_callback, new_outdated_callback, new_error_callback)
                 # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
                 return
             

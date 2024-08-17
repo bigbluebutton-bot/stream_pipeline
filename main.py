@@ -97,7 +97,6 @@ def main() -> None:
                     name="c2-phase1",
                     modules=[
                     DataConditionModule(SuccessModule(), FailureModule()),
-                    RandomExit(),
                 ]),
             ],
         ),
@@ -112,6 +111,7 @@ def main() -> None:
                     modules=[
                     CombinationModule([
                         CombinationModule([
+                            RandomExit(),
                             DataTransformationModule(),
                             ExternalModule("localhost", 50051, ModuleOptions(use_mutex=False)),
                         ], ModuleOptions(
