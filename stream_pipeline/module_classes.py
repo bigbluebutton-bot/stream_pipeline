@@ -256,8 +256,9 @@ class CombinationModule(Module):
         Executes each module in the list sequentially, passing the output of one as the input to the next.
         """
         for i, module in enumerate(self.modules):
-            module.run(data, dpc, dpp, dpm)
-            if not data.status == Status.SUCCESS:
+            dpm_sup = module.run(data, dpc, dpp, dpm)
+            if not dpm_sup.status == Status.SUCCESS:
+                dpm.status = dpm_sup.status
                 break
 
 
