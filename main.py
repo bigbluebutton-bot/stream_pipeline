@@ -102,7 +102,7 @@ def main() -> None:
             ],
         ),
         PipelineController(
-            mode=ControllerMode.ORDER_BY_SEQUENCE,
+            mode=ControllerMode.FIRST_WINS,
             max_workers=4,
             queue_size=2,
             name="controller3",
@@ -149,6 +149,12 @@ def main() -> None:
         print(f"OVERFLOWN: {dp.data}")
         with counter_mutex:
             counter = counter + 1
+            
+    def outdated_callback(dp: DataPackage[Data]) -> None:
+        nonlocal counter, counter_mutex
+        print(f"OUTDATED: {dp.data}")
+        with counter_mutex:
+            counter = counter + 1
 
     def error_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
@@ -158,7 +164,7 @@ def main() -> None:
 
     # Function to execute the processing pipeline
     def process_data(data: Data) -> Union[DataPackage, None]:
-        return pipeline.execute(data, pip_ex_id, callback, exit_callback, overflown_callback, error_callback)
+        return pipeline.execute(data, pip_ex_id, callback, exit_callback, overflown_callback, outdated_callback, error_callback)
 
     # Example data
     data_list: List[Data] = [
