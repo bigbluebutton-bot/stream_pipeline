@@ -3,7 +3,7 @@ def main() -> None:
     import time
     from prometheus_client import start_http_server
     from stream_pipeline.grpc_server import GrpcServer
-    from stream_pipeline.data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController
+    from stream_pipeline.data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController, Status
     from stream_pipeline.module_classes import ExecutionModule, ModuleOptions
 
     from data import Data
@@ -23,10 +23,9 @@ def main() -> None:
             time.sleep(randomint)
             if dp.data:
                 dp.data.key = dp.data.key.upper() + " transformed"
-                dpm.success = True
                 dpm.message = "Transformation succeeded"
             else:
-                dpm.success = False
+                dpm.status = Status.EXIT
                 dpm.message = "Transformation failed: key missing"
 
     # Example usage

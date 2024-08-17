@@ -11,7 +11,7 @@ from prometheus_client import Gauge, Summary, Counter
 from . import data_pb2
 from . import data_pb2_grpc
 from .error import Error, exception_to_error
-from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController
+from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController, Status
 
 # Metrics to track time spent on processing modules
 MODULE_INPUT_FLOWRATE = Counter("module_input_flowrate", "The flowrate of the module input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
@@ -69,7 +69,7 @@ class Module(ABC):
         if id(self) in self._locks:
             del self._locks[id(self)]
 
-    def run(self, dp: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, parent_module: Optional[DataPackageModule] = None) -> None:
+    def run(self, dp: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, parent_module: Optional[DataPackageModule] = None) -> DataPackageModule:
         """
         Wrapper method that executes the module's main logic within a thread-safe context.
         Measures and records the execution time and waiting time.
@@ -80,12 +80,11 @@ class Module(ABC):
         dpm = DataPackageModule()
         dpm.module_id=self._id
         dpm.module_name=self._name
-        dpm.running=True
+        dpm.status=Status.RUNNING
         dpm.start_time=0.0
         dpm.end_time=0.0
         dpm.waiting_time=0.0
         dpm.total_time=0.0
-        dpm.success=True
         dpm.error=None
         
         # Add the module to the parent module if it exists
@@ -98,11 +97,13 @@ class Module(ABC):
         dpm.start_time = start_time
         waiting_time = 0.0
         if self._use_mutex:
+            dpm.status=Status.WAITING
             MODULE_WAITING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
             self._mutex.acquire()
             MODULE_WAITING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).dec()
             waiting_time = time.time() - start_time
             dpm.waiting_time = waiting_time
+            dpm.status=Status.RUNNING
             MODULE_WAITING_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(waiting_time)
         
         MODULE_PROCESSING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
@@ -121,31 +122,36 @@ class Module(ABC):
                     # Raise a TimeoutError to stop the thread
                     raise TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
                 except TimeoutError as te:
-                    dpm.success = False
+                    dpm.status=Status.ERROR
                     dpm.error = exception_to_error(te)
 
-        if not dpm.success:
-            dp.success = False
-            if dpm.error:
-                dp.errors.append(dpm.error)
+        if dpm.status == Status.RUNNING:
+            dpm.status = Status.SUCCESS
 
-        if dpm.success:
+        if dpm.status == Status.SUCCESS:
             MODULE_OUTPUT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
-        elif not dpm.error:
+        elif dpm.status == Status.EXIT:
             MODULE_EXIT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
-        else:
+        elif dpm.status == Status.ERROR:
             MODULE_ERROR_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
+        else:
+            try:
+                raise ValueError(f"Invalid status {dpm.status} for module {self._name}")
+            except ValueError as ve:
+                dpm.status = Status.ERROR
+                dpm.error = exception_to_error(ve)
         
         end_time = time.time()
         dpm.end_time = end_time
         total_time = end_time - start_time
         dpm.total_time = total_time
-        dpm.running = False
         MODULE_PROCESSING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).dec()
         MODULE_TOTAL_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(total_time)
         
         if self._use_mutex:
             self._mutex.release()
+            
+        return dpm
 
         
         
@@ -162,7 +168,7 @@ class Module(ABC):
             if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
                 # print(f"WARNING: Execution of module {self._name} was interrupted due to timeout.")
                 return
-            dpm.success = False
+            dpm.status = Status.ERROR
             dpm.error = exception_to_error(e)
 
     @abstractmethod
@@ -251,7 +257,7 @@ class CombinationModule(Module):
         """
         for i, module in enumerate(self.modules):
             module.run(data, dpc, dpp, dpm)
-            if not data.success:
+            if not data.status == Status.SUCCESS:
                 break
 
 
