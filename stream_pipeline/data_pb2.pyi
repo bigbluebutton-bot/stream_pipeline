@@ -397,7 +397,9 @@ class ReturnDPandError(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     DATA_PACKAGE_FIELD_NUMBER: builtins.int
+    DATA_PACKAGE_MODULE_ID_FIELD_NUMBER: builtins.int
     ERROR_FIELD_NUMBER: builtins.int
+    data_package_module_id: builtins.str
     @property
     def data_package(self) -> global___DataPackage: ...
     @property
@@ -406,9 +408,10 @@ class ReturnDPandError(google.protobuf.message.Message):
         self,
         *,
         data_package: global___DataPackage | None = ...,
+        data_package_module_id: builtins.str = ...,
         error: global___Error | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["data_package", b"data_package", "error", b"error"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["data_package", b"data_package", "error", b"error"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["data_package", b"data_package", "data_package_module_id", b"data_package_module_id", "error", b"error"]) -> None: ...
 
 global___ReturnDPandError = ReturnDPandError

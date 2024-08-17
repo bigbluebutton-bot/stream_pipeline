@@ -271,6 +271,16 @@ class ExternalModule(Module):
         self.host: str = host
         self.port: int = port
 
+    def _get_sub_module(self, dpm: DataPackageModule, sub_dp_module_id: str) -> Optional[DataPackageModule]:
+        for sub_module in dpm.sub_modules:
+            if sub_module.id == sub_dp_module_id:
+                return sub_module
+            else:
+                sub_sub_module = self._get_sub_module(sub_module, sub_dp_module_id)
+                if sub_sub_module:
+                    return sub_sub_module
+        return None
+
     @final
     def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
         address = f"{self.host}:{self.port}"
@@ -282,10 +292,16 @@ class ExternalModule(Module):
             dpm_id = dpm.id
             data_grpc = data_pb2.RequestDP(data_package=dp_grpc, data_package_controller_id=dpc_id, data_package_phase_id=dpp_id, data_package_module_id=dpm_id)
             response = stub.run(data_grpc)
-
+            
+            
             if response.error and response.error.ListFields():
                 error = Error()
                 error.set_from_grpc(response.error)
                 raise error.to_exception()
             else:
+                sub_dpm_id = response.data_package_module_id
                 data.set_from_grpc(response.data_package)
+                sub_dpm = self._get_sub_module(dpm, sub_dpm_id)
+                if not sub_dpm:
+                    raise ValueError(f"Sub module with id {sub_dpm_id} not found in parent module.")
+                dpm.status = sub_dpm.status
