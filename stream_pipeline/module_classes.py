@@ -123,7 +123,9 @@ class Module(ABC):
                     raise TimeoutError(f"Execution of module {self._name} timed out after {self._timeout} seconds.")
                 except TimeoutError as te:
                     dpm.status=Status.ERROR
-                    dpm.error = exception_to_error(te)
+                    err = exception_to_error(te)
+                    dpm.error = err
+                    dp.errors.append(err)
 
         if dpm.status == Status.RUNNING:
             dpm.status = Status.SUCCESS
@@ -139,7 +141,9 @@ class Module(ABC):
                 raise ValueError(f"Invalid status {dpm.status} for module {self._name}")
             except ValueError as ve:
                 dpm.status = Status.ERROR
-                dpm.error = exception_to_error(ve)
+                err = exception_to_error(ve)
+                dpm.error = err
+                dp.errors.append(err)
         
         end_time = time.time()
         dpm.end_time = end_time
@@ -169,7 +173,9 @@ class Module(ABC):
                 # print(f"WARNING: Execution of module {self._name} was interrupted due to timeout.")
                 return
             dpm.status = Status.ERROR
-            dpm.error = exception_to_error(e)
+            err = exception_to_error(e)
+            dpm.error = err
+            data.errors.append(err)
 
     @abstractmethod
     def execute(self, data: DataPackage, data_package_controller: DataPackageController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:

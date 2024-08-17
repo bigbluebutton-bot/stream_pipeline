@@ -102,8 +102,6 @@ class PipelinePhase:
             dpm = module.run(dp=data_package, dpc=data_package_controller, dpp=dp_phase)
             if not dpm.status == Status.SUCCESS:
                 dp_phase.status = dpm.status
-                if dpm.status == Status.ERROR:
-                    data_package.errors.append(dpm.error)
                 break
 
         if dp_phase.status == Status.RUNNING:
