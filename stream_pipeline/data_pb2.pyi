@@ -35,8 +35,6 @@ class _StatusEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTyp
     OVERFLOW: _Status.ValueType  # 6
     OUTDATED: _Status.ValueType  # 7
     WAITING_OUTPUT: _Status.ValueType  # 8
-    WAITING_OUTPUT_FOR_EXIT: _Status.ValueType  # 9
-    WAITING_OUTPUT_FOR_ERROR: _Status.ValueType  # 10
 
 class Status(_Status, metaclass=_StatusEnumTypeWrapper):
     """Enum for Status"""
@@ -51,8 +49,6 @@ ERROR: Status.ValueType  # 5
 OVERFLOW: Status.ValueType  # 6
 OUTDATED: Status.ValueType  # 7
 WAITING_OUTPUT: Status.ValueType  # 8
-WAITING_OUTPUT_FOR_EXIT: Status.ValueType  # 9
-WAITING_OUTPUT_FOR_ERROR: Status.ValueType  # 10
 global___Status = Status
 
 @typing.final

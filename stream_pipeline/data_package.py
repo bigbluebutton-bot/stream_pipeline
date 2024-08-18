@@ -19,8 +19,6 @@ class Status(Enum):
     OVERFLOW = 6
     OUTDATED = 7
     WAITING_OUTPUT = 8
-    WAITING_OUTPUT_FOR_EXIT = 9
-    WAITING_OUTPUT_FOR_ERROR = 10
 
 @dataclass
 class DataPackageModule(ThreadSafeClass):
