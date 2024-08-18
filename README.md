@@ -3,7 +3,7 @@
 ![](img/small-logo.png)
 
 ## Overview
-`stream_pipeline` is a scalable microservice pipeline designed to handle data streams, for eaxample audio streams. This project aims to provide a robust and flexible framework for processing streaming data through a series of modular and configurable components.
+`stream_pipeline` is a modular pipeline designed to handle data streams, for eaxample audio streams. This project aims to provide a robust and flexible framework for processing streaming data through a series of modular and configurable components. Each step will be measured and can be used to optimize the pipeline.
 
 ## How to use this package
 1. Create a new file called requirements.txt in the root of your project and add the following line:
