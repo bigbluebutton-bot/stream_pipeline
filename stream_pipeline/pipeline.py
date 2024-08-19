@@ -85,6 +85,10 @@ class PipelinePhase:
 
         self._lock = threading.Lock()
 
+    def init_modules(self) -> None:
+        for module in self._modules:
+            module.init_module()
+
     def execute(self, data_package: DataPackage, data_package_controller: DataPackageController) -> DataPackagePhase:
         start_time = time.time()
         with self._lock:
@@ -298,6 +302,10 @@ class PipelineController:
         self._dp_queue_lock = threading.Lock()
 
         self._lock = threading.Lock()
+
+    def init_phases(self) -> None:
+        for phase in self._phases:
+            phase.init_modules()
 
     def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Callable[[DataPackage], None], overflow_callback: Callable[[DataPackage], None], outdated_callback: Callable[[DataPackage], None], error_callback: Callable[[DataPackage], None]) -> None:
         start_time = time.time()
@@ -638,12 +646,12 @@ class Pipeline(Generic[T]):
 
         # for each instance create a deepcopy of the phases
         with self._lock:
-            for con in self._controllers:
-                order_tracker = OrderTracker()
-                for ex_id in self._pipeline_instances:
+            for ex_id in self._pipeline_instances:
+                self._instances_controllers[ex_id] = []
+                for con in self._controllers:
                     copy_con = con.__deepcopy__({})
-                    copy_con.set_order_tracker(order_tracker)
                     self._instances_controllers[ex_id].append(copy_con)
+                    copy_con.init_phases()
 
     def register_instance(self) -> str:
         ex = PipelineInstance()

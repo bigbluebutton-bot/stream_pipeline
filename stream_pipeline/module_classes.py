@@ -178,6 +178,14 @@ class Module(ABC):
             data.errors.append(err)
 
     @abstractmethod
+    def init_module(self) -> None:
+        """
+        Abstract method to be implemented by subclasses.
+        Initializes the module. Will be called by the pipeline when the module is added to the pipeline. Will be called only once.
+        """
+        pass
+
+    @abstractmethod
     def execute(self, data: DataPackage, data_package_controller: DataPackageController, data_package_phase: DataPackagePhase, data_package_module: DataPackageModule) -> None:
         """
         Abstract method to be implemented by subclasses.
@@ -210,6 +218,10 @@ class ExecutionModule(Module, ABC):
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
         super().__init__(options, name)
 
+    def init_module(self) -> None:
+        print(f"Initializing module {self._name}")
+        pass
+
     """
     Abstract class for modules that perform specific execution tasks.
     """
@@ -229,6 +241,10 @@ class ConditionModule(Module, ABC):
         super().__init__(options, name)
         self.true_module = true_module
         self.false_module = false_module
+
+    def init_module(self) -> None:
+        self.true_module.init_module()
+        self.false_module.init_module()
 
     @abstractmethod
     def condition(self, data: DataPackage) -> bool:
@@ -255,6 +271,10 @@ class CombinationModule(Module):
     def __init__(self, modules: List[Module], options: ModuleOptions = ModuleOptions(), name: str = ""):
         super().__init__(options, name)
         self.modules = modules
+
+    def init_module(self) -> None:
+        for module in self.modules:
+            module.init_module()
     
     @final
     def execute(self, data: DataPackage, dpc: DataPackageController, dpp: DataPackagePhase, dpm: DataPackageModule) -> None:
@@ -276,6 +296,9 @@ class ExternalModule(Module):
         super().__init__(options, name)
         self.host: str = host
         self.port: int = port
+
+    def init_module(self) -> None:
+        pass
 
     def _get_sub_module(self, dpm: DataPackageModule, sub_dp_module_id: str) -> Optional[DataPackageModule]:
         for sub_module in dpm.sub_modules:
