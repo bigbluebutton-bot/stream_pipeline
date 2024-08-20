@@ -5,7 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 import time
 
-from stream_pipeline.error import exception_to_error
+from stream_pipeline.error import exception_to_error, format_json
 from .module_classes import Module
 import threading
 from typing import Callable, Dict, Generic, List, Optional, Sequence, Tuple, TypeVar, Union
@@ -322,7 +322,6 @@ class PipelineController:
         dp_phase_con.status = Status.RUNNING
         dp_phase_con.start_time=start_time
 
-        # print(f"Starting {data_package.data} with sequence number {dp_phase_ex.sequence_number}")
         data_package.controllers.append(dp_phase_con)
 
         self._order_tracker.add_data(data_package, dp_phase_con)
@@ -346,8 +345,6 @@ class PipelineController:
                         CONTROLLER_INPUT_WAITING_COUNTER.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).dec()
                         CONTROLLER_PROCESSING_COUNT.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).inc()
 
-
-                    # print(f"C{len(queue_data.data_package.controller)} Starting {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
 
                     start_context = queue_data.start_context
                     dp_phase_con = queue_data.dp_phase_con
@@ -374,10 +371,7 @@ class PipelineController:
                                 dp_phase_con.status = dpp.status
                                 break
 
-                        # print(f"Phase {self._name} finished {data_package.data} with sequence number {dp_phase_ex.sequence_number}: {id(self._order_tracker)}")
-
                     except Exception as e:
-                        # print(exception_to_error(e))
                         dp_phase_con.status = Status.ERROR
                         data_package.errors.append(exception_to_error(e))
 
@@ -403,10 +397,10 @@ class PipelineController:
                     dp_phase_con.end_time = time.time() # This will set the end time temporarily (bad code). It will be overriden in the next block.
                     CONTROLLER_OUTPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
                     with self._order_tracker.instance_lock:
-                        # print(f"C{len(queue_data.data_package.controller)} Finished {queue_data.data_package.data} with sequence number {queue_data.dp_phase_con.sequence_number}")
+                        
                         self._order_tracker.push_finished_data_package(dp_phase_con.sequence_number)
                         finished_data_packages, outdated_data_packages = self._order_tracker.pop_finished_data_packages(self._mode)
-                        # print(f"C{len(queue_data.data_package.controller)} {len(finished_data_packages)}")
+                        
                         for (fdp, fdpc) in finished_data_packages:
                             
                             if fdpc.status == Status.WAITING_OUTPUT:
@@ -458,14 +452,14 @@ class PipelineController:
                             outdated_callback(odp)
                             
             except Exception as e:
-                print(exception_to_error(e))
+                # print(f"Critical error: {format_json(str(exception_to_error(e)))}")
+                pass
 
         popped_value: Optional[QueueData] = None
         with self._dp_queue_lock:
             if len(self._dp_queue) == self._dp_queue.maxlen:
                 popped_value = self._dp_queue[0]
 
-            # print(f"C{len(data_package.controller)} Put in Queue: {data_package.data}")
             with self._lock:
                 CONTROLLER_INPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
             
@@ -475,7 +469,6 @@ class PipelineController:
             if popped_value:
                 with self._order_tracker.instance_lock:
                     self._order_tracker.remove_data(popped_value.dp_phase_con.sequence_number)
-                    # print(f"Pop from Queue with E: {popped_value.data_package.data}")
 
             if self._executor._work_queue.qsize() < self._executor._max_workers:
                 self._executor.submit(execute_phases)
@@ -588,12 +581,10 @@ class PipelineInstance:
             for controller in self._controller_queue[dp.id]:
                 left_phases.append(controller._name)
 
-            # print(f"{dp.data} {len(dp.phases)}/{len(phases)}({len(self._phases_execution_queue[dp.id])}) {left_phases}")
 
             if len(self._controller_queue[dp.id]) > 0:
                 controller = self._controller_queue[dp.id].pop(0)
                 controller.execute(dp, new_callback, new_exit_callback, new_overflow_callback, new_outdated_callback, new_error_callback)
-                # print(f"Task {dp.data} submitted to {phase._name}. Remaining tasks: {len(phases_queue)}")
                 return
             
             new_success_callback(dp)

@@ -1,3 +1,6 @@
+import json
+
+
 def main() -> None:
     import random
     import time
@@ -5,8 +8,20 @@ def main() -> None:
     from stream_pipeline.grpc_server import GrpcServer
     from stream_pipeline.data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController, Status
     from stream_pipeline.module_classes import ExecutionModule, ModuleOptions
+    import stream_pipeline.error as error
 
     from data import Data
+
+    def format_json(json_str: str) -> str:
+        try:
+            return json.dumps(json.loads(json_str), indent=4)
+        except Exception as ex:
+            return json_str
+
+    err_logger = error.ErrorLogger()
+    err_logger.set_debug(True)
+    err_logger.set_custom_excepthook(lambda ex: print(f"{format_json(ex)}"))
+    err_logger.set_custom_threading_excepthook(lambda ex: print(f"{format_json(ex)}"))
 
     start_http_server(8001)
 

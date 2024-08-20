@@ -380,6 +380,12 @@ def json_error_handler_str(exc: Union[BaseException, Error, None]) -> str:
     error_json = json.dumps(minimal_error_info)
     return error_json
 
+def format_json(json_str: str) -> str:
+    try:
+        return json.dumps(json.loads(json_str), indent=4)
+    except Exception as ex:
+        return json_str
+
 # Example usage
 if __name__ == "__main__":
     error_logger = ErrorLogger()

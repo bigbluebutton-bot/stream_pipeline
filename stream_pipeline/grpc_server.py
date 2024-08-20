@@ -124,11 +124,9 @@ class GrpcServer(Generic[T]):
     
     def start(self) -> None:
         self.server.start()
-        print(f"Server started on port {self.port}.")
     
     def stop(self) -> None:
         self.server.stop(0)
-        print(f"Server on port {self.port} stopped.")
 
     def wait_for_termination(self) -> None:
         try:

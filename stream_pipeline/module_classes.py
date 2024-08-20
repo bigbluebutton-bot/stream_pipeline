@@ -219,7 +219,6 @@ class ExecutionModule(Module, ABC):
         super().__init__(options, name)
 
     def init_module(self) -> None:
-        print(f"Initializing module {self._name}")
         pass
 
     """
