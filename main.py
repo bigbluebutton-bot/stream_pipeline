@@ -1,18 +1,31 @@
+
+import random
+import threading
+from typing import Union, List
+from stream_pipeline.data_package import DataPackageController, DataPackagePhase, DataPackageModule, Status
+from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
+from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
+from prometheus_client import start_http_server
+import time
+import json
+import stream_pipeline.error as error
+
+from data import Data
+
 def main() -> None:
-    import random
-    import threading
-    from typing import Union, List
-    from stream_pipeline.data_package import DataPackageController, DataPackagePhase, DataPackageModule, Status
-    from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
-    from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
-    from prometheus_client import start_http_server
-    import time
-    import stream_pipeline.error as error
-    
-    from data import Data
+
+    def format_json(json_str: str) -> str:
+        try:
+            return json.dumps(json.loads(json_str), indent=4)
+        except Exception as ex:
+            return json_str
 
     err_logger = error.ErrorLogger()
     err_logger.set_debug(True)
+    err_logger.set_custom_excepthook(lambda ex: print(f"{format_json(ex)}"))
+    err_logger.set_custom_threading_excepthook(lambda ex: print(f"{format_json(ex)}"))
+    
+
 
 
     # Start up the server to expose the metrics.
@@ -158,7 +171,8 @@ def main() -> None:
 
     def error_callback(dp: DataPackage[Data]) -> None:
         nonlocal counter, counter_mutex
-        print(f"ERROR: {dp.errors[0]}")
+        f_json = format_json(f"{dp.errors[0]}")
+        print(f"ERROR: {f_json}")
         with counter_mutex:
             counter = counter + 1
 
@@ -192,8 +206,8 @@ def main() -> None:
     pipeline.unregister_instance(pip_ex_id)
 
 
-
-    print(f"Example DataPackage: {dp}")
+    f_dp = format_json(f"{dp}")
+    print(f"Example DataPackage: {f_dp}")
     print("THE END")
 
     time.sleep(1000)

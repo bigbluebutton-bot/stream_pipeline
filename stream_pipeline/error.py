@@ -5,7 +5,7 @@ import threading
 import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Dict, List, NamedTuple, Optional, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Type, Union
 import uuid
 
 from . import data_pb2
@@ -218,6 +218,8 @@ class ErrorLoggerOptions(NamedTuple):
 class ErrorLogger:
     _instance: Optional['ErrorLogger'] = None
     _lock = threading.Lock()
+    
+    _original_threading_excepthook: Callable[[threading.ExceptHookArgs], Any] = threading.excepthook  # Save original threading excepthook
 
     def __new__(cls) -> 'ErrorLogger':
         if cls._instance is None:
@@ -243,6 +245,30 @@ class ErrorLogger:
     def get_debug(self) -> bool:
         with self._lock:
             return self.debug
+        
+    def _run_custom_excepthook(self, exc_type: Type[BaseException], exc_value: BaseException, exc_traceback: Optional[TracebackType]) -> None:
+        error_json = json_error_handler_str(exc_value)
+        self.custom_excepthook(error_json)
+        
+    def _run_custom_threading_excepthook(self, args: threading.ExceptHookArgs) -> None:
+        error_json = json_error_handler_str(args.exc_value)
+        self.custom_threading_excepthook(error_json)
+        
+    def set_custom_excepthook(self, custom_excepthook: Optional[Callable[[str], None]] = None) -> None:
+        if custom_excepthook is not None:
+            self.custom_excepthook = custom_excepthook
+            sys.excepthook = self._run_custom_excepthook
+        else:
+            # Reset to default excepthook
+            sys.excepthook = sys.__excepthook__
+            
+    def set_custom_threading_excepthook(self, custom_threading_excepthook: Optional[Callable[[str], None]] = None) -> None:
+        if custom_threading_excepthook is not None:
+            self.custom_threading_excepthook = custom_threading_excepthook
+            threading.excepthook = self._run_custom_threading_excepthook
+        else:
+            # Reset to the original threading excepthook
+            threading.excepthook = self._original_threading_excepthook
 
 def format_vars(variables: Dict[str, Any]) -> Dict[str, str]:
     formatted_vars = {}
@@ -351,25 +377,8 @@ def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Union[Dic
 
 def json_error_handler_str(exc: Union[BaseException, Error, None]) -> str:
     minimal_error_info = json_error_handler_dict(exc) 
-    error_json = json.dumps(minimal_error_info, indent=4)
+    error_json = json.dumps(minimal_error_info)
     return error_json
-
-# Custom JSON error handler
-def json_error_handler(exc: Union[BaseException, Error, None]) -> None:
-    error_json = json_error_handler_str(exc)
-    print(error_json)
-
-# Set the custom error handler for uncaught exceptions
-def custom_excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: TracebackType | None) -> None:
-    json_error_handler(exc_value)
-
-sys.excepthook = custom_excepthook
-
-# Set the custom error handler for uncaught exceptions in threads
-def threading_excepthook(args: threading.ExceptHookArgs) -> None:
-    json_error_handler(args.exc_value)
-
-threading.excepthook = threading_excepthook
 
 # Example usage
 if __name__ == "__main__":
@@ -429,7 +438,7 @@ if __name__ == "__main__":
     try:
         execute_function()
     except Exception as e:
-        json_error_handler(e)
+        print(exception_to_error(e))
     print(f"-----------------------------------------------\n")
         
     print(f"-----------In MainThread with crash------------")

@@ -93,9 +93,9 @@ class ThreadSafeClass(ABC):
     def __str__(self) -> str:
         data_dict = self.to_dict(1024)
         try:
-            jsonstring = json.dumps(data_dict, default=str, indent=4)
+            jsonstring = json.dumps(data_dict, default=str)
         except (TypeError, ValueError):
             data_dict['data'] = "Data which cannot be displayed as JSON"
-            jsonstring = json.dumps(data_dict, default=str, indent=4)
+            jsonstring = json.dumps(data_dict, default=str)
 
         return jsonstring
