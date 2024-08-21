@@ -5,7 +5,7 @@ from typing import Any, Generic, Optional, Tuple, TypeVar, Union
 
 from .data_package import DataPackage, DataPackageController, DataPackagePhase, DataPackageModule
 
-from .error import exception_to_error
+from .logger import exception_to_error
 
 from .module_classes import Module 
 from .data_pb2 import ReturnDPandError, RequestDP, Error

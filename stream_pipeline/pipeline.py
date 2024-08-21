@@ -5,7 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 import time
 
-from stream_pipeline.error import exception_to_error, format_json
+from .logger import PipelineLogger, exception_to_error, format_json
 from .module_classes import Module
 import threading
 from typing import Callable, Dict, Generic, List, Optional, Sequence, Tuple, TypeVar, Union
@@ -452,7 +452,8 @@ class PipelineController:
                             outdated_callback(odp)
                             
             except Exception as e:
-                # print(f"Critical error: {format_json(str(exception_to_error(e)))}")
+                pipeline_logger = PipelineLogger()
+                pipeline_logger.critical(f"Critical error: {format_json(str(exception_to_error(e)))}")
                 pass
 
         popped_value: Optional[QueueData] = None

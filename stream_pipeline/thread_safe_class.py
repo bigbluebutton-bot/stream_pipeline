@@ -68,7 +68,7 @@ class ThreadSafeClass(ABC):
             elif isinstance(data, (list, tuple, set)):
                 return type(data)(process_dict(item) for item in data)
             elif isinstance(data, BaseException):
-                from .error import json_error_handler_dict
+                from .logger import json_error_handler_dict
                 return json_error_handler_dict(data)
             elif hasattr(data, 'to_dict'):
                 return data.to_dict(truncate_long_data)

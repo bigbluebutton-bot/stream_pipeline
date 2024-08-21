@@ -5,26 +5,25 @@ from typing import Union, List
 from stream_pipeline.data_package import DataPackageController, DataPackagePhase, DataPackageModule, Status
 from stream_pipeline.module_classes import ExecutionModule, ConditionModule, CombinationModule, Module, ModuleOptions, DataPackage, ExternalModule
 from stream_pipeline.pipeline import Pipeline, ControllerMode, PipelinePhase, PipelineController
+from stream_pipeline.logger import PipelineLogger, format_json
 from prometheus_client import start_http_server
 import time
 import json
-import stream_pipeline.error as error
 
 from data import Data
 
 def main() -> None:
-
-    def format_json(json_str: str) -> str:
-        try:
-            return json.dumps(json.loads(json_str), indent=4)
-        except Exception as ex:
-            return json_str
-
-    err_logger = error.ErrorLogger()
-    err_logger.set_debug(True)
-    err_logger.set_custom_excepthook(lambda ex: print(f"{format_json(ex)}"))
-    err_logger.set_custom_threading_excepthook(lambda ex: print(f"{format_json(ex)}"))
-    
+    # You can set your own logging for internal pipeline logging if you want. If not set nothing will be logged.
+    pipeline_logger = PipelineLogger()
+    pipeline_logger.set_debug(True)
+    pipeline_logger.set_info(print)
+    pipeline_logger.set_warning(print)
+    pipeline_logger.set_error(print)
+    pipeline_logger.set_critical(print)
+    pipeline_logger.set_log(print)
+    pipeline_logger.set_exception(print)
+    pipeline_logger.set_excepthook(lambda ex: print(f"{format_json(ex)}"))
+    pipeline_logger.set_threading_excepthook(lambda ex: print(f"{format_json(ex)}"))
 
 
 
@@ -210,7 +209,7 @@ def main() -> None:
     print(f"Example DataPackage: {f_dp}")
     print("THE END")
 
-    time.sleep(1000)
+    # time.sleep(1000)
 
 if __name__ == "__main__":
     main()

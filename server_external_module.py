@@ -8,7 +8,7 @@ def main() -> None:
     from stream_pipeline.grpc_server import GrpcServer
     from stream_pipeline.data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController, Status
     from stream_pipeline.module_classes import ExecutionModule, ModuleOptions
-    import stream_pipeline.error as error
+    from stream_pipeline.logger import PipelineLogger
 
     from data import Data
 
@@ -18,10 +18,10 @@ def main() -> None:
         except Exception as ex:
             return json_str
 
-    err_logger = error.ErrorLogger()
+    err_logger = PipelineLogger()
     err_logger.set_debug(True)
-    err_logger.set_custom_excepthook(lambda ex: print(f"{format_json(ex)}"))
-    err_logger.set_custom_threading_excepthook(lambda ex: print(f"{format_json(ex)}"))
+    err_logger.set_excepthook(lambda ex: print(f"{format_json(ex)}"))
+    err_logger.set_threading_excepthook(lambda ex: print(f"{format_json(ex)}"))
 
     start_http_server(8001)
 
