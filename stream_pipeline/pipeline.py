@@ -28,7 +28,7 @@ PIPELINE_OVERFLOW_TIME = Summary("pipeline_overflow_time", "The time it took for
 PIPELINE_OUTDATED_TIME = Summary("pipeline_outdated_time", "The time it took for the pipeline to finish with outdated status", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 PIPELINE_ERROR_TIME = Summary("pipeline_error_time", "The time it took for the pipeline to finish with error status", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 
-PIPELINE_PROCESSING_COUNT = Gauge("pipeline_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_PROCESSING_COUNTER = Gauge("pipeline_processing_counter", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 
 
 CONTROLLER_INPUT_FLOWRATE = Counter("controller_input_flowrate", "The flowrate of the controller input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
@@ -48,7 +48,7 @@ CONTROLLER_ERROR_TIME = Summary("controller_error_time", "The time it took for t
 
 CONTROLLER_INPUT_WAITING_COUNTER = Gauge("controller_input_waiting_counter", "The number of data packages waiting to be processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_OUTPUT_WAITING_COUNTER = Gauge("controller_output_waiting_counter", "The number of data packages waiting to be output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
-CONTROLLER_PROCESSING_COUNT = Gauge("controller_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_PROCESSING_COUNTER = Gauge("controller_processing_counter", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 
 
 PHASE_INPUT_FLOWRATE = Counter("phase_input_flowrate", "The flowrate of the phase input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
@@ -60,7 +60,7 @@ PHASE_SUCCESS_TIME = Summary("phase_success_time", "The time it took for the pha
 PHASE_EXIT_TIME = Summary("phase_exit_time", "The time it took for the phase to finish with exit status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 PHASE_ERROR_TIME = Summary("phase_error_time", "The time it took for the phase to finish with error status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 
-PHASE_PROCESSING_COUNT = Gauge("phase_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+PHASE_PROCESSING_COUNTER = Gauge("phase_processing_counter", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 
 class ControllerMode(Enum):
     """
@@ -104,7 +104,7 @@ class PipelinePhase:
         start_time = time.time()
         with self._lock:
             PHASE_INPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
-            PHASE_PROCESSING_COUNT.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
+            PHASE_PROCESSING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
         
         dp_phase = DataPackagePhase()
         with self._lock:
@@ -147,7 +147,7 @@ class PipelinePhase:
                     data_package.errors.append(exception_to_error(e))
                     
             
-            PHASE_PROCESSING_COUNT.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).dec()
+            PHASE_PROCESSING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).dec()
             
         return dp_phase
 
@@ -356,7 +356,7 @@ class PipelineController:
 
                     with self._lock:
                         CONTROLLER_INPUT_WAITING_COUNTER.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).dec()
-                        CONTROLLER_PROCESSING_COUNT.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).inc()
+                        CONTROLLER_PROCESSING_COUNTER.labels(queue_data.data_package.pipeline_name, queue_data.data_package.pipeline_id, queue_data.data_package.pipeline_instance_id, self._name, self._id).inc()
 
 
                     start_context = queue_data.start_context
@@ -444,7 +444,7 @@ class PipelineController:
                                 else:
                                     CONTROLLER_ERROR_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                                     CONTROLLER_ERROR_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
-                                CONTROLLER_PROCESSING_COUNT.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).dec()
+                                CONTROLLER_PROCESSING_COUNTER.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).dec()
                             
                             callback(fdp)
                             
@@ -531,7 +531,7 @@ class PipelineInstance:
     def execute(self, controllers: List[PipelineController], dp: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Optional[Callable[[DataPackage], None]] = None, overflow_callback: Optional[Callable[[DataPackage], None]] = None, outdated_callback: Optional[Callable[[DataPackage], None]] = None, error_callback: Union[Callable[[DataPackage], None], None] = None) -> None:      
         with self._lock:
             PIPELINE_INPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
-            PIPELINE_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
+            PIPELINE_PROCESSING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
         
         with self._lock:
             dp.pipeline_instance_id = self._id
@@ -545,7 +545,7 @@ class PipelineInstance:
             total_time = end_time - dp.start_time
             dp.total_time = total_time
             with self._lock:
-                PIPELINE_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, self._id).dec()
+                PIPELINE_PROCESSING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, self._id).dec()
         
         def new_success_callback(dp: DataPackage) -> None:
             nonlocal callback
