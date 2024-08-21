@@ -284,13 +284,13 @@ class PipelineLogger:
         if self.critical_callback:
             self.critical_callback(msg, args, kwargs)
 
-    def set_log(self, log_callback: Optional[Callable[[str, Tuple, Dict], None]]) -> None:
+    def set_log(self, log_callback: Optional[Callable[[int, str, Tuple, Dict], None]]) -> None:
         with self._lock:
             self.log_callback = log_callback
 
-    def log(self, msg: Any, *args: tuple, **kwargs: dict[str, Any]) -> None:
+    def log(self, level: int, msg: Any, *args: tuple, **kwargs: dict[str, Any]) -> None:
         if self.log_callback:
-            self.log_callback(msg, args, kwargs)
+            self.log_callback(level, msg, args, kwargs)
 
     def set_exception(self, exception_callback: Optional[Callable[[str, Tuple, bool, Dict], None]]) -> None:
         with self._lock:
