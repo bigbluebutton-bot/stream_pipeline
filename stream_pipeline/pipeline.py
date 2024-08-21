@@ -22,7 +22,12 @@ PIPELINE_OVERFLOW_FLOWRATE = Counter("pipeline_overflow_flowrate", "The flowrate
 PIPELINE_OUTDATED_FLOWRATE = Counter("pipeline_outdated_flowrate", "The flowrate of DP which are outdated", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 PIPELINE_ERROR_FLOWRATE = Counter("pipeline_error_flowrate", "The flowrate of the pipeline error", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 
-PIPELINE_TOTAL_TIME = Summary("pipeline_total_time", "The total time of the pipeline", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_SUCCESS_TIME = Summary("pipeline_success_time", "The time it took for the pipeline to finish successfully", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_EXIT_TIME = Summary("pipeline_exit_time", "The time it took for the pipeline to finish with exit status", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_OVERFLOW_TIME = Summary("pipeline_overflow_time", "The time it took for the pipeline to finish with overflow status", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_OUTDATED_TIME = Summary("pipeline_outdated_time", "The time it took for the pipeline to finish with outdated status", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+PIPELINE_ERROR_TIME = Summary("pipeline_error_time", "The time it took for the pipeline to finish with error status", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
+
 PIPELINE_PROCESSING_COUNT = Gauge("pipeline_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id"])
 
 
@@ -35,7 +40,11 @@ CONTROLLER_ERROR_FLOWRATE = Counter("controller_error_flowrate", "The flowrate o
 
 CONTROLLER_INPUT_WAITING_TIME = Summary("controller_input_waiting_time", "The waiting time of the controller input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_OUTPUT_WAITING_TIME = Summary("controller_output_waiting_time", "The waiting time of the controller output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
-CONTROLLER_TOTAL_TIME = Summary("controller_total_time", "The total time of the controller", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_SUCCESS_TIME = Summary("controller_success_time", "The time it took for the controller to finish successfully", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_EXIT_TIME = Summary("controller_exit_time", "The time it took for the controller to finish with exit status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OVERFLOW_TIME = Summary("controller_overflow_time", "The time it took for the controller to finish with overflow status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_OUTDATED_TIME = Summary("controller_outdated_time", "The time it took for the controller to finish with outdated status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
+CONTROLLER_ERROR_TIME = Summary("controller_error_time", "The time it took for the controller to finish with error status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 
 CONTROLLER_INPUT_WAITING_COUNTER = Gauge("controller_input_waiting_counter", "The number of data packages waiting to be processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
 CONTROLLER_OUTPUT_WAITING_COUNTER = Gauge("controller_output_waiting_counter", "The number of data packages waiting to be output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id"])
@@ -47,7 +56,9 @@ PHASE_OUTPUT_FLOWRATE = Counter("phase_output_flowrate", "The flowrate of the ph
 PHASE_EXIT_FLOWRATE = Counter("phase_exit_flowrate", "The flowrate of the phase exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 PHASE_ERROR_FLOWRATE = Counter("phase_error_flowrate", "The flowrate of the phase error", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 
-PHASE_TOTAL_TIME = Summary("phase_total_time", "The total time of the phase", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+PHASE_SUCCESS_TIME = Summary("phase_success_time", "The time it took for the phase to finish successfully", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+PHASE_EXIT_TIME = Summary("phase_exit_time", "The time it took for the phase to finish with exit status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+PHASE_ERROR_TIME = Summary("phase_error_time", "The time it took for the phase to finish with error status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 
 PHASE_PROCESSING_COUNT = Gauge("phase_processing_count", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 
@@ -120,10 +131,13 @@ class PipelinePhase:
 
         with self._lock:
             if dp_phase.status == Status.SUCCESS:
+                PHASE_SUCCESS_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).observe(total_time)
                 PHASE_OUTPUT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
             elif dp_phase.status == Status.EXIT:
+                PHASE_EXIT_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).observe(total_time)
                 PHASE_EXIT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc()
             elif dp_phase.status == Status.ERROR:
+                PHASE_ERROR_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).observe(total_time)
                 PHASE_ERROR_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).inc
             else:
                 try:
@@ -134,7 +148,6 @@ class PipelinePhase:
                     
             
             PHASE_PROCESSING_COUNT.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).dec()
-            PHASE_TOTAL_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, data_package_controller.controller_name, data_package_controller.controller_id, self._name, self._id).observe(total_time)
             
         return dp_phase
 
@@ -423,13 +436,15 @@ class PipelineController:
                             
                             with self._lock:
                                 if fdpc.status == Status.SUCCESS:
+                                    CONTROLLER_SUCCESS_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                                     CONTROLLER_OUTPUT_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
                                 elif fdpc.status == Status.EXIT:
+                                    CONTROLLER_EXIT_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                                     CONTROLLER_EXIT_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
                                 else:
+                                    CONTROLLER_ERROR_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                                     CONTROLLER_ERROR_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
                                 CONTROLLER_PROCESSING_COUNT.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).dec()
-                                CONTROLLER_TOTAL_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                             
                             callback(fdp)
                             
@@ -447,6 +462,7 @@ class PipelineController:
                             total_time = end_time - odp.start_time
                             output_waiting_time = end_time - odpc.end_time
                             
+                            CONTROLLER_OUTDATED_TIME.labels(odp.pipeline_name, odp.pipeline_id, odp.pipeline_instance_id, self._name, self._id).observe(total_time)
                             CONTROLLER_OUTDATED_FLOWRATE.labels(odp.pipeline_name, odp.pipeline_id, odp.pipeline_instance_id, self._name, self._id).inc()
                             
                             outdated_callback(odp)
@@ -478,6 +494,7 @@ class PipelineController:
             dp: DataPackage = popped_value.data_package
             popped_value.dp_phase_con.status = Status.OVERFLOW
             with self._lock:
+                CONTROLLER_OVERFLOW_TIME.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).observe(time.time() - start_time)
                 CONTROLLER_OVERFLOW_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).inc()
                 CONTROLLER_INPUT_WAITING_COUNTER.labels(dp.pipeline_name, dp.pipeline_id, dp.pipeline_instance_id, self._name, self._id).dec()
             overflow_callback(dp)
@@ -528,7 +545,6 @@ class PipelineInstance:
             total_time = end_time - dp.start_time
             dp.total_time = total_time
             with self._lock:
-                PIPELINE_TOTAL_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(total_time)
                 PIPELINE_PROCESSING_COUNT.labels(dp.pipeline_name, dp.pipeline_id, self._id).dec()
         
         def new_success_callback(dp: DataPackage) -> None:
@@ -536,6 +552,7 @@ class PipelineInstance:
             end_dp(dp)
             dp.status = Status.SUCCESS
             with self._lock:
+                PIPELINE_SUCCESS_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(dp.total_time)
                 PIPELINE_OUTPUT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             callback(dp)
         
@@ -544,6 +561,7 @@ class PipelineInstance:
             end_dp(dp)
             dp.status = Status.EXIT
             with self._lock:
+                PIPELINE_EXIT_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(dp.total_time)
                 PIPELINE_EXIT_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             if exit_callback:
                 exit_callback(dp)
@@ -553,6 +571,7 @@ class PipelineInstance:
             end_dp(dp)
             dp.status = Status.OVERFLOW
             with self._lock:
+                PIPELINE_OVERFLOW_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(dp.total_time)
                 PIPELINE_OVERFLOW_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             if overflow_callback:
                 overflow_callback(dp)
@@ -562,6 +581,7 @@ class PipelineInstance:
             end_dp(dp)
             dp.status = Status.OUTDATED
             with self._lock:
+                PIPELINE_OUTDATED_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(dp.total_time)
                 PIPELINE_OUTDATED_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             if outdated_callback:
                 outdated_callback(dp)
@@ -571,6 +591,7 @@ class PipelineInstance:
             end_dp(dp)
             dp.status = Status.ERROR
             with self._lock:
+                PIPELINE_ERROR_TIME.labels(dp.pipeline_name, dp.pipeline_id, self._id).observe(dp.total_time)
                 PIPELINE_ERROR_FLOWRATE.labels(dp.pipeline_name, dp.pipeline_id, self._id).inc()
             if error_callback:
                 error_callback(dp)

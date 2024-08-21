@@ -19,8 +19,12 @@ MODULE_OUTPUT_FLOWRATE = Counter("module_output_flowrate", "The flowrate of the 
 MODULE_EXIT_FLOWRATE = Counter("module_exit_flowrate", "The flowrate of the module exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
 MODULE_ERROR_FLOWRATE = Counter("module_error_flowrate", "The flowrate of the module errors", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
 
+MODULE_SUCCESS_TIME = Summary("module_success_time", "Time spent on successful module execution", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_EXIT_TIME = Summary("module_exit_time", "Time spent on module exit", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+MODULE_ERROR_TIME = Summary("module_error_time", "Time spent on module error", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+
 MODULE_WAITING_TIME = Summary("module_waiting_time", "Time spent waiting for a module to execute", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
-MODULE_TOTAL_TIME = Summary("module_total_time", "Total time spent executing a module", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+
 
 MODULE_WAITING_COUNTER = Gauge("module_waiting_counter", "Number of modules waiting to execute", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
 MODULE_PROCESSING_COUNTER = Gauge("module_processing_counter", "Number of modules currently executing", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
@@ -130,11 +134,19 @@ class Module(ABC):
         if dpm.status == Status.RUNNING:
             dpm.status = Status.SUCCESS
 
+        end_time = time.time()
+        dpm.end_time = end_time
+        total_time = end_time - start_time
+        dpm.total_time = total_time
+
         if dpm.status == Status.SUCCESS:
+            MODULE_SUCCESS_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(total_time)
             MODULE_OUTPUT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
         elif dpm.status == Status.EXIT:
+            MODULE_EXIT_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(total_time)
             MODULE_EXIT_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
         elif dpm.status == Status.ERROR:
+            MODULE_ERROR_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(total_time)
             MODULE_ERROR_FLOWRATE.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).inc()
         else:
             try:
@@ -145,12 +157,7 @@ class Module(ABC):
                 dpm.error = err
                 dp.errors.append(err)
         
-        end_time = time.time()
-        dpm.end_time = end_time
-        total_time = end_time - start_time
-        dpm.total_time = total_time
         MODULE_PROCESSING_COUNTER.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).dec()
-        MODULE_TOTAL_TIME.labels(pipeline_name=dp.pipeline_name, pipeline_id=dp.pipeline_id, pipeline_instance_id=dp.pipeline_instance_id, controller_name=dpc.controller_name, controller_id=dpc.controller_id, phase_name=dpp.phase_name, phase_id=dpp.phase_id, module_name=self._name, module_id=self._id).observe(total_time)
         
         if self._use_mutex:
             self._mutex.release()
