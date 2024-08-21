@@ -5,7 +5,7 @@ import uuid
 
 from . import data_pb2
 from .thread_safe_class import ThreadSafeClass
-from .error import Error, exception_to_error
+from .logger import Error, exception_to_error
 
 from enum import Enum
 

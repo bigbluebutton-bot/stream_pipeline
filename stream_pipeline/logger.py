@@ -5,7 +5,7 @@ import threading
 import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Mapping, NamedTuple, Optional, Tuple, Type, Union
 import uuid
 
 from . import data_pb2
@@ -215,19 +215,25 @@ class ErrorLoggerOptions(NamedTuple):
     environment_vars: bool = False
     module_versions: bool = False
 
-class ErrorLogger:
-    _instance: Optional['ErrorLogger'] = None
+class PipelineLogger:
+    _instance: Optional['PipelineLogger'] = None
     _lock = threading.Lock()
     
     _original_threading_excepthook: Callable[[threading.ExceptHookArgs], Any] = threading.excepthook  # Save original threading excepthook
 
-    def __new__(cls) -> 'ErrorLogger':
+    def __new__(cls) -> 'PipelineLogger':
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super(ErrorLogger, cls).__new__(cls)
+                    cls._instance = super(PipelineLogger, cls).__new__(cls)
                     cls._instance.options = ErrorLoggerOptions()
                     cls._instance.debug = True
+                    cls._instance.info_callback = None # : Optional[Callable[[object, object, Optional[_ExcInfoType], bool, int, Mapping[str, object] | None], None]]
+                    cls._instance.warning_callback = None # : Optional[Callable[[object, object, Optional[_ExcInfoType], bool, int, Mapping[str, object] | None], None]]
+                    cls._instance.error_callback = None # : Optional[Callable[[object, object, Optional[_ExcInfoType], bool, int, Mapping[str, object] | None], None]]
+                    cls._instance.critical_callback = None # : Optional[Callable[[object, object, Optional[_ExcInfoType], bool, int, Mapping[str, object] | None], None]]
+                    cls._instance.log_callback = None # : Optional[Callable[[int, object, object, Optional[_ExcInfoType], bool, int, Mapping[str, object] | None], None]]
+                    cls._instance.exception_callback = None # : Optional[Callable[[object, object, Optional[_ExcInfoType], bool, int, Mapping[str, object] | None], None]]
         return cls._instance
 
     def set_options(self, options: ErrorLoggerOptions) -> None:
@@ -246,6 +252,54 @@ class ErrorLogger:
         with self._lock:
             return self.debug
         
+    def set_info(self, info_callback: Optional[Callable[[str, Tuple, Dict], None]]) -> None:
+        with self._lock:
+            self.info_callback = info_callback
+
+    def info(self, msg: Any, *args: tuple, **kwargs: dict[str, Any]) -> None:
+        if self.info_callback:
+            self.info_callback(msg, args, kwargs)
+
+    def set_warning(self, warning_callback: Optional[Callable[[str, Tuple, Dict], None]]) -> None:
+        with self._lock:
+            self.warning_callback = warning_callback
+
+    def warning(self, msg: Any, *args: tuple, **kwargs: dict[str, Any]) -> None:
+        if self.warning_callback:
+            self.warning_callback(msg, args, kwargs)
+
+    def set_error(self, error_callback: Optional[Callable[[str, Tuple, Dict], None]]) -> None:
+        with self._lock:
+            self.error_callback = error_callback
+
+    def error(self, msg: Any, *args: tuple, **kwargs: dict[str, Any]) -> None:
+        if self.error_callback:
+            self.error_callback(msg, args, kwargs)
+
+    def set_critical(self, critical_callback: Optional[Callable[[str, Tuple, Dict], None]]) -> None:
+        with self._lock:
+            self.critical_callback = critical_callback
+
+    def critical(self, msg: Any, *args: tuple, **kwargs: dict[str, Any]) -> None:
+        if self.critical_callback:
+            self.critical_callback(msg, args, kwargs)
+
+    def set_log(self, log_callback: Optional[Callable[[str, Tuple, Dict], None]]) -> None:
+        with self._lock:
+            self.log_callback = log_callback
+
+    def log(self, msg: Any, *args: tuple, **kwargs: dict[str, Any]) -> None:
+        if self.log_callback:
+            self.log_callback(msg, args, kwargs)
+
+    def set_exception(self, exception_callback: Optional[Callable[[str, Tuple, bool, Dict], None]]) -> None:
+        with self._lock:
+            self.exception_callback = exception_callback
+
+    def exception(self, msg: Any, *args: tuple, exc_info: bool = True, **kwargs: dict[str, Any]) -> None:
+        if self.exception_callback:
+            self.exception_callback(msg, args, exc_info, kwargs)
+        
     def _run_custom_excepthook(self, exc_type: Type[BaseException], exc_value: BaseException, exc_traceback: Optional[TracebackType]) -> None:
         error_json = json_error_handler_str(exc_value)
         self.custom_excepthook(error_json)
@@ -254,7 +308,7 @@ class ErrorLogger:
         error_json = json_error_handler_str(args.exc_value)
         self.custom_threading_excepthook(error_json)
         
-    def set_custom_excepthook(self, custom_excepthook: Optional[Callable[[str], None]] = None) -> None:
+    def set_excepthook(self, custom_excepthook: Optional[Callable[[str], None]] = None) -> None:
         if custom_excepthook is not None:
             self.custom_excepthook = custom_excepthook
             sys.excepthook = self._run_custom_excepthook
@@ -262,7 +316,7 @@ class ErrorLogger:
             # Reset to default excepthook
             sys.excepthook = sys.__excepthook__
             
-    def set_custom_threading_excepthook(self, custom_threading_excepthook: Optional[Callable[[str], None]] = None) -> None:
+    def set_threading_excepthook(self, custom_threading_excepthook: Optional[Callable[[str], None]] = None) -> None:
         if custom_threading_excepthook is not None:
             self.custom_threading_excepthook = custom_threading_excepthook
             threading.excepthook = self._run_custom_threading_excepthook
@@ -340,7 +394,7 @@ def json_error_handler_dict(exc: Union[BaseException, Error, None]) -> Union[Dic
     if error_obj is None:
         return None
 
-    error_logger = ErrorLogger()
+    error_logger = PipelineLogger()
     options = error_logger.get_options()
     
     minimal_error_info = {
@@ -388,7 +442,7 @@ def format_json(json_str: str) -> str:
 
 # Example usage
 if __name__ == "__main__":
-    error_logger = ErrorLogger()
+    error_logger = PipelineLogger()
     error_logger.set_debug(True)  # Enable or disable debug logging
 
     # Set custom options

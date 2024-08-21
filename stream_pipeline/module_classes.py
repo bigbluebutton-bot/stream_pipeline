@@ -10,7 +10,7 @@ from prometheus_client import Gauge, Summary, Counter
 
 from . import data_pb2
 from . import data_pb2_grpc
-from .error import Error, exception_to_error
+from .logger import Error, PipelineLogger, exception_to_error
 from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController, Status
 
 # Metrics to track time spent on processing modules
@@ -170,7 +170,8 @@ class Module(ABC):
         except Exception as e:
             current_thread = threading.current_thread()
             if hasattr(current_thread, 'timed_out') and current_thread.timed_out:
-                # print(f"WARNING: Execution of module {self._name} was interrupted due to timeout.")
+                pipeline_logger = PipelineLogger()
+                pipeline_logger.warning(f"Execution of module {self._name} was interrupted due to timeout.")
                 return
             dpm.status = Status.ERROR
             err = exception_to_error(e)
