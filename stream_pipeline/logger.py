@@ -378,7 +378,7 @@ def exception_to_error(exc: Union[BaseException, Error, None]) -> Union[Error, N
     error.local_vars=local_vars
     error.global_vars=global_vars
     error.environment_vars={key: os.environ[key] for key in os.environ}
-    error.module_versions={module: sys.modules[module].__version__ if hasattr(sys.modules[module], '__version__') else 'N/A' for module in sys.modules}
+    error.module_versions = {module: sys.modules[module].__version__ if hasattr(sys.modules[module], '__version__') else 'N/A' for module in list(sys.modules.keys())}
 
     return error
 
