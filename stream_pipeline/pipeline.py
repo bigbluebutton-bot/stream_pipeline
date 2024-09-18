@@ -393,11 +393,25 @@ class PipelineController:
                     elif dp_phase_con.status == Status.EXIT:
                         with self._order_tracker.instance_lock:
                             self._order_tracker.remove_data(dp_phase_con.sequence_number)
+                            end_time = time.time()
+                            total_time = end_time - dp_phase_con.start_time
+                            dp_phase_con.end_time = end_time
+                            dp_phase_con.total_time = total_time
+                            CONTROLLER_EXIT_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).observe(total_time)
+                            CONTROLLER_EXIT_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
+                            CONTROLLER_PROCESSING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).dec()
                         exit_callback(data_package)
                         continue
                     elif dp_phase_con.status == Status.ERROR:
                         with self._order_tracker.instance_lock:
                             self._order_tracker.remove_data(dp_phase_con.sequence_number)
+                            end_time = time.time()
+                            total_time = end_time - dp_phase_con.start_time
+                            dp_phase_con.end_time = end_time
+                            dp_phase_con.total_time = total_time
+                            CONTROLLER_ERROR_TIME.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).observe(total_time)
+                            CONTROLLER_ERROR_FLOWRATE.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
+                            CONTROLLER_PROCESSING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).dec()
                         error_callback(data_package)
                         continue
                     else:
@@ -438,12 +452,7 @@ class PipelineController:
                                 if fdpc.status == Status.SUCCESS:
                                     CONTROLLER_SUCCESS_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
                                     CONTROLLER_OUTPUT_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
-                                elif fdpc.status == Status.EXIT:
-                                    CONTROLLER_EXIT_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
-                                    CONTROLLER_EXIT_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
-                                else:
-                                    CONTROLLER_ERROR_TIME.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).observe(total_time)
-                                    CONTROLLER_ERROR_FLOWRATE.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).inc()
+
                                 CONTROLLER_PROCESSING_COUNTER.labels(fdp.pipeline_name, fdp.pipeline_id, fdp.pipeline_instance_id, self._name, self._id).dec()
                             
                             callback(fdp)
@@ -461,9 +470,13 @@ class PipelineController:
                             end_time = time.time()
                             total_time = end_time - odp.start_time
                             output_waiting_time = end_time - odpc.end_time
+                            odpc.end_time = end_time
+                            odpc.total_time = total_time
+                            odpc.output_waiting_time = output_waiting_time
                             
                             CONTROLLER_OUTDATED_TIME.labels(odp.pipeline_name, odp.pipeline_id, odp.pipeline_instance_id, self._name, self._id).observe(total_time)
                             CONTROLLER_OUTDATED_FLOWRATE.labels(odp.pipeline_name, odp.pipeline_id, odp.pipeline_instance_id, self._name, self._id).inc()
+                            CONTROLLER_PROCESSING_COUNTER.labels(odp.pipeline_name, odp.pipeline_id, odp.pipeline_instance_id, self._name, self._id).dec()
                             
                             outdated_callback(odp)
                             
