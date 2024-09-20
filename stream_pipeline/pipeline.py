@@ -8,7 +8,7 @@ import time
 from .logger import PipelineLogger, exception_to_error, format_json
 from .module_classes import Module
 import threading
-from typing import Callable, Dict, Generic, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Callable, Dict, Generic, List, Optional, Sequence, Set, Tuple, TypeVar, Union
 from enum import Enum
 import uuid
 from prometheus_client import Gauge, Summary, Counter
@@ -311,14 +311,24 @@ class PipelineController:
         self._order_tracker = OrderTracker()
 
         self._queue_size = queue_size
+        if queue_size == 0:
+            queue_size = 1
         self._dp_queue: deque = deque(maxlen=queue_size) # Hase data in it of type QueueData
         self._dp_queue_lock = threading.Lock()
+
+        self._current_thread: Set[str] = set()
 
         self._lock = threading.Lock()
 
     def init_phases(self) -> None:
         for phase in self._phases:
             phase.init_modules()
+
+    def _get_current_working_threads(self) -> List[str]:
+        """Returns a list of names of the currently working threads."""
+        # Return a copy of the active threads to avoid modifying the original set
+        with self._lock:
+            return list(self._current_thread)
 
     def execute(self, data_package: DataPackage, callback: Callable[[DataPackage], None], exit_callback: Callable[[DataPackage], None], overflow_callback: Callable[[DataPackage], None], outdated_callback: Callable[[DataPackage], None], error_callback: Callable[[DataPackage], None]) -> None:
         start_time = time.time()
@@ -342,6 +352,9 @@ class PipelineController:
         start_context = threading.current_thread().name
 
         def execute_phases() -> None:
+            with self._lock:
+                self._current_thread.add(threading.current_thread().name)
+            
             try:
                 while True:
                     queue_data: Optional[QueueData] = None
@@ -483,24 +496,35 @@ class PipelineController:
             except Exception as e:
                 pipeline_logger = PipelineLogger()
                 pipeline_logger.critical(f"Critical error: {format_json(str(exception_to_error(e)))}")
-                pass
+                
+            with self._lock:
+                self._current_thread.remove(threading.current_thread().name)
 
         popped_value: Optional[QueueData] = None
         with self._dp_queue_lock:
-            if len(self._dp_queue) == self._dp_queue.maxlen:
+            # if all worker are busy and self._queue_size == 0, then will popped_value of the new dp
+            new_value_overflow: bool = False
+            worker_free = len(self._get_current_working_threads()) < self._max_workers
+            if not worker_free and self._queue_size == 0:
+                popped_value = QueueData(start_context, dp_phase_con, data_package, start_time)
+                new_value_overflow = True
+            elif len(self._dp_queue) == self._dp_queue.maxlen:
                 popped_value = self._dp_queue[0]
 
             with self._lock:
                 CONTROLLER_INPUT_WAITING_COUNTER.labels(data_package.pipeline_name, data_package.pipeline_id, data_package.pipeline_instance_id, self._name, self._id).inc()
             
             dp_phase_con.status = Status.WAITING
-            self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time))
+            if not new_value_overflow:
+                if self._name == "controller3":
+                    print(f"{self._name} {data_package.data} {self._queue_size} {worker_free} {self._executor._work_queue.qsize()} {self._executor._max_workers}")
+                self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time))
 
             if popped_value:
                 with self._order_tracker.instance_lock:
                     self._order_tracker.remove_data(popped_value.dp_phase_con.sequence_number)
 
-            if self._executor._work_queue.qsize() < self._executor._max_workers:
+            if worker_free:
                 self._executor.submit(execute_phases)
 
         if popped_value:
