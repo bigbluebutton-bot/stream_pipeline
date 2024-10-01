@@ -516,8 +516,6 @@ class PipelineController:
             
             dp_phase_con.status = Status.WAITING
             if not new_value_overflow:
-                if self._name == "controller3":
-                    print(f"{self._name} {data_package.data} {self._queue_size} {worker_free} {self._executor._work_queue.qsize()} {self._executor._max_workers}")
                 self._dp_queue.append(QueueData(start_context, dp_phase_con, data_package, start_time))
 
             if popped_value:
