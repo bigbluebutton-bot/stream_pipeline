@@ -12,9 +12,9 @@ setup(
     description='Scalable microservice pipeline for data stream processing',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url='https://github.com/JulianKropp/stream_pipeline',
+    url='https://github.com/bigbluebutton-bot/stream_pipeline',
     author='Julian Kropp',
-    author_email='julianKropp@users.noreply.github.com',
+    author_email='62835694+JulianKropp@users.noreply.github.com>',
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',

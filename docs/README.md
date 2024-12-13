@@ -2,7 +2,7 @@
 
 For the development of a processing a stream of live data (like live audio transcription system), it is necessary to have a modular system capable of performing real-time measurements at each individual processing step. Additionally, the control of the flow rate, i.e., how much data is processed per second, is of great importance. Another requirement is the ability to scale the system both vertically and horizontally.
 
-To meet these requirements, a pipeline framework was developed, specialized in processing real-time data streams, in this case, audio streams. The pipeline is modular and can be adapted depending on conditions. The source code for the pipeline framework is available at the following link: [stream_pipeline GitHub](https://github.com/JulianKropp/stream_pipeline).
+To meet these requirements, a pipeline framework was developed, specialized in processing real-time data streams, in this case, audio streams. The pipeline is modular and can be adapted depending on conditions. The source code for the pipeline framework is available at the following link: [stream_pipeline GitHub](https://github.com/bigbluebutton-bot/stream_pipeline).
 
 ---
 

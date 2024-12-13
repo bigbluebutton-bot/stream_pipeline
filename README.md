@@ -3,12 +3,12 @@
 ![](img/small-logo.png)
 
 ## Overview
-`stream_pipeline` is a modular pipeline designed to handle data streams, for eaxample audio streams. This project aims to provide a robust and flexible framework for processing streaming data through a series of modular and configurable components. Each step will be measured and can be used to optimize the pipeline. For a detailed description of the architecture, please refer to the [docs](https://juliankropp.github.io/stream_pipeline/)
+`stream_pipeline` is a modular pipeline designed to handle data streams, for eaxample audio streams. This project aims to provide a robust and flexible framework for processing streaming data through a series of modular and configurable components. Each step will be measured and can be used to optimize the pipeline. For a detailed description of the architecture, please refer to the [docs](https://bigbluebutton-bot.github.io/stream_pipeline/)
 
 ## How to use this package
 1. Create a new file called requirements.txt in the root of your project and add the following line:
 ```
-git+https://github.com/JulianKropp/stream_pipeline
+git+https://github.com/bigbluebutton-bot/stream_pipeline
 mypy
 ```
 2. Install the package by running the following command:
@@ -16,13 +16,13 @@ mypy
 pip3 install -r requirements.txt
 ```
 3. Example: Create three files called `main.py`, `server_external_module.py` and `data.py` in the root of your project and add this example from this repository to the files.
-- [`main.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/main.py)
-- [`server_external_module.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/server_external_module.py)
-- [`data.py`](https://github.com/JulianKropp/stream_pipeline/blob/main/data.py)
+- [`main.py`](https://github.com/bigbluebutton-bot/stream_pipeline/blob/main/main.py)
+- [`server_external_module.py`](https://github.com/bigbluebutton-bot/stream_pipeline/blob/main/server_external_module.py)
+- [`data.py`](https://github.com/bigbluebutton-bot/stream_pipeline/blob/main/data.py)
 ```bash
-wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/server_external_module.py
-wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/main.py
-wget https://raw.githubusercontent.com/JulianKropp/stream_pipeline/main/data.py
+wget https://raw.githubusercontent.com/bigbluebutton-bot/stream_pipeline/main/server_external_module.py
+wget https://raw.githubusercontent.com/bigbluebutton-bot/stream_pipeline/main/main.py
+wget https://raw.githubusercontent.com/bigbluebutton-bot/stream_pipeline/main/data.py
 ```
 4. Open two terminals and run the following commands to start the pipeline:
 ```bash
@@ -34,12 +34,12 @@ python3 main.py
 
 
 ## Architecture
-The pipeline is designed to be modular and flexible. Each module can be replaced with a custom implementation. For a deatiled description of the architecture, please refer to the [docs](https://juliankropp.github.io/stream_pipeline/)
+The pipeline is designed to be modular and flexible. Each module can be replaced with a custom implementation. For a deatiled description of the architecture, please refer to the [docs](https://bigbluebutton-bot.github.io/stream_pipeline/)
 
 # Dev
 
 ```bash
-git clone https://github.com/JulianKropp/stream_pipeline
+git clone https://github.com/bigbluebutton-bot/stream_pipeline
 cd stream_pipeline
 ```
 
