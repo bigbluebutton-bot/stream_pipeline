@@ -13,6 +13,9 @@ from . import data_pb2_grpc
 from .logger import Error, PipelineLogger, exception_to_error
 from .data_package import DataPackage, DataPackageModule, DataPackagePhase, DataPackageController, Status
 
+LockType = type(threading.Lock())   # typically <class '_thread.lock'>
+RLockType = type(threading.RLock()) # typically <class '_thread.RLock'>
+
 # Metrics to track time spent on processing modules
 MODULE_INPUT_FLOWRATE = Counter("module_input_flowrate", "The flowrate of the module input", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
 MODULE_OUTPUT_FLOWRATE = Counter("module_output_flowrate", "The flowrate of the module output", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
@@ -201,26 +204,71 @@ class Module(ABC):
         """
         pass
 
+    def _deepcopy_lock_aware(self, obj: Any, memo: Dict[int, Any]) -> Any:
+        """
+        Recursively deep-copies objects, ensuring that any locks found
+        (even in nested containers) are replaced with newly created locks.
+        """
+        # If we already copied this object, return from memo
+        obj_id = id(obj)
+        if obj_id in memo:
+            return memo[obj_id]
+
+        # Handle lock objects explicitly
+        if isinstance(obj, LockType):
+            new_obj = threading.Lock()
+            memo[obj_id] = new_obj
+            return new_obj
+        if isinstance(obj, RLockType):
+            new_obj = threading.RLock()
+            memo[obj_id] = new_obj
+            return new_obj
+
+        # Handle lists by deep-copying each item
+        if isinstance(obj, list):
+            new_list = []
+            memo[obj_id] = new_list  # put in memo before recursion
+            for item in obj:
+                new_list.append(self._deepcopy_lock_aware(item, memo))
+            return new_list
+
+        # Handle dicts by deep-copying each value
+        if isinstance(obj, dict):
+            new_dict = {}
+            memo[obj_id] = new_dict  # put in memo before recursion
+            for k, v in obj.items():
+                new_dict[k] = self._deepcopy_lock_aware(v, memo)
+            return new_dict
+
+        # For everything else, fall back to standard copy.deepcopy
+        # This also recursively uses the same memo.
+        new_obj = copy.deepcopy(obj, memo)
+        # Put that result into memo so we don't duplicate in future
+        memo[obj_id] = new_obj
+        return new_obj
+
     def __deepcopy__(self, memo: Dict[int, Any]) -> Any:
-        # Check if the object is already in memo
+        # If we've seen this object already, return its copy
         if id(self) in memo:
             return memo[id(self)]
-        
-        # Create a copy of the object
-        copy_obj = self.__class__.__new__(self.__class__)
-        
-        # Store the copy in memo
-        memo[id(self)] = copy_obj
-        
-        # Deep copy all instance attributes
-        for k, v in self.__dict__.items():
-            setattr(copy_obj, k, copy.deepcopy(v, memo))
-        
-        # Ensure that the _locks attribute is copied correctly
-        if id(self) in self._locks:
-            copy_obj._locks[id(copy_obj)] = threading.RLock()
-        
+
+        # Create a new, empty instance of the same class
+        cls = self.__class__
+        copy_obj = cls.__new__(cls)
+        memo[id(self)] = copy_obj  # store in memo early
+
+        # Deep-copy every attribute using our custom lock-aware function
+        for attr_name, attr_value in self.__dict__.items():
+            if not self._deepcopy_skip_attr_name(attr_name):
+                setattr(copy_obj, attr_name, self._deepcopy_lock_aware(attr_value, memo))
+
         return copy_obj
+    
+    def _deepcopy_skip_attr_name(self, attr_name: str) -> bool:
+        """
+        Method to determine whether an attribute should be skipped during deep copy. Pls override in subclass.
+        """
+        return False
 
 class ExecutionModule(Module, ABC):
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):
