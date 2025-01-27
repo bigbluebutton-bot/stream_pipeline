@@ -703,10 +703,14 @@ class Pipeline(Generic[T]):
 
     def register_instance(self) -> str:
         ex = PipelineInstance()
+        ex_id = ex.get_id()
         with self._lock:
-            self._pipeline_instances[ex.get_id()] = ex
-            self._instances_controllers[ex.get_id()] = []
-        self.set_phases()
+            self._pipeline_instances[ex_id] = ex
+            self._instances_controllers[ex_id] = []
+            for con in self._controllers:
+                copy_con = con.__deepcopy__({})
+                self._instances_controllers[ex_id].append(copy_con)
+                copy_con.init_phases()
         return ex._id
 
     def _get_instance(self, instance_id: str) -> Union[PipelineInstance, None]:
