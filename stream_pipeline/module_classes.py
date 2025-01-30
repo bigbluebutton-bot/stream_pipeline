@@ -2,7 +2,7 @@
 import copy
 from abc import ABC, abstractmethod
 import threading
-from typing import  Any, Dict, List, Optional, Tuple, Union, final, NamedTuple
+from typing import  Any, Callable, Dict, List, Optional, Tuple, Union, final, NamedTuple
 import time
 import uuid
 import grpc
@@ -269,6 +269,16 @@ class Module(ABC):
         Method to determine whether an attribute should be skipped during deep copy. Pls override in subclass.
         """
         return False
+    
+    def _get_api_annotation(self) -> Dict[Callable[..., Dict[str, Any]], Dict[str, Any]]:
+        result: Dict[Callable[..., Dict[str, Any]], Dict[str, Any]] = {}
+
+        for method_name in dir(self):
+            method = getattr(self, method_name)
+            if hasattr(method, '__dict__') and 'add_route' in method.__dict__.get('__annotations__', {}):
+                result[method] = method.__dict__['__annotations__']['add_route']
+
+        return result
 
 class ExecutionModule(Module, ABC):
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):

@@ -712,6 +712,10 @@ class Pipeline(Generic[T]):
                 self._instances_controllers[ex_id].append(copy_con)
                 copy_con.init_phases()
         return ex._id
+    
+    def get_instances(self) -> List[str]:
+        with self._lock:
+            return list(self._pipeline_instances.keys())
 
     def _get_instance(self, instance_id: str) -> Union[PipelineInstance, None]:
         with self._lock:

@@ -2,3 +2,4 @@ mypy
 prometheus_client
 grpcio-tools
 mypy-protobuf
+fastapi[standard]
