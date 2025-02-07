@@ -7,6 +7,7 @@ import time
 import uuid
 import grpc
 from prometheus_client import Gauge, Summary, Counter
+from pydantic import BaseModel
 
 from . import data_pb2
 from . import data_pb2_grpc
@@ -31,6 +32,16 @@ MODULE_WAITING_TIME = Summary("module_waiting_time", "Time spent waiting for a m
 
 MODULE_WAITING_COUNTER = Gauge("module_waiting_counter", "Number of modules waiting to execute", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
 MODULE_PROCESSING_COUNTER = Gauge("module_processing_counter", "Number of modules currently executing", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id", "module_name", "module_id"])
+
+
+
+class ModuleModel(BaseModel):
+    module_id: str
+    module_name: str
+    sub_modules: Dict[str, "ModuleModel"]
+
+
+
 
 class ModuleOptions(NamedTuple):
     """
@@ -59,6 +70,11 @@ class Module(ABC):
     
     def get_name(self) -> str:
         return self._name
+    
+    def get_sub_modules(self) -> Dict[str, "Module"]:
+        result = {k: v for k, v in self.__dict__.items() if isinstance(v, Module)}
+        print(result)
+        return result
 
     @property
     def _mutex(self) -> threading.RLock:
@@ -269,6 +285,14 @@ class Module(ABC):
         Method to determine whether an attribute should be skipped during deep copy. Pls override in subclass.
         """
         return False
+    
+    def to_BaseModel(self) -> ModuleModel:
+        sub_modules = self.get_sub_modules()
+        return ModuleModel(
+            module_id=self.get_id(),
+            module_name=self.get_name(),
+            sub_modules={key: value.to_BaseModel() for key, value in sub_modules.items()}
+        )
 
 class ExecutionModule(Module, ABC):
     def __init__(self, options: ModuleOptions = ModuleOptions(), name: str = ""):

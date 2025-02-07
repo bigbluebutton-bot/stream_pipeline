@@ -2,8 +2,8 @@ from typing import Any, Callable, Dict, List, Optional
 from pydantic import BaseModel
 import uvicorn
 import threading
-from fastapi import FastAPI
-from .pipeline import Pipeline
+from fastapi import FastAPI, HTTPException
+from .pipeline import Pipeline, PipelineModel
 
 def add_route(
     sub_path: str,
@@ -238,21 +238,6 @@ class APIService:
         if self._uvicorn_server:
             self._uvicorn_server.should_exit = True
             print("FastAPI stopping...")
-
-
-    class Response_get_pipelines(BaseModel):
-        pipelines: List[str]
-    @add_route(
-        sub_path="/pipelines",
-        methods=["GET"],
-        summary="Get all pipelines",
-        description="Return all pipelines currently registered with the service."
-    )
-    def get_pipelines(self) -> Response_get_pipelines:
-        """"
-        Get the ids of all pipelines currently registered with the service.
-        """
-        return self.Response_get_pipelines(pipelines=list(self._pipelines.keys()))
     
 
     class Response_get_pipeline_instances(BaseModel):
@@ -268,5 +253,39 @@ class APIService:
         Get the ids of all instances of a pipeline.
         """
         if pipeline_id not in self._pipelines:
-            raise ValueError(f"Pipeline {pipeline_id} not found.")
+            raise HTTPException(status_code=404, detail=f"Pipeline {pipeline_id} not found.")
         return self.Response_get_pipeline_instances(instances=list(self._pipelines[pipeline_id].get_instances()))
+    
+
+
+    class Response_get_pipelines(BaseModel):
+        pipelines: List[PipelineModel]
+    @add_route(
+        sub_path="/pipelines",
+        methods=["GET"],
+        summary="Get all pipelines",
+        description="Return all pipelines currently registered with the service."
+    )
+    def get_pipelines(self) -> Response_get_pipelines:
+        """"
+        Get all pipelines.
+        """
+        return self.Response_get_pipelines(
+            pipelines=[p.to_BaseModel() for p in self._pipelines.values()]
+        )
+    
+    class Response_get_pipeline_by_id(BaseModel):
+        pipeline: PipelineModel
+    @add_route(
+        sub_path="/pipelines/{pipeline_id}",
+        methods=["GET"],
+        summary="Get a pipeline by id",
+        description="Return a pipeline by id."
+    )
+    def get_pipeline_by_id(self, pipeline_id: str) -> Response_get_pipeline_by_id:
+        """"
+        Get a pipeline by id.
+        """
+        if pipeline_id not in self._pipelines:
+            raise HTTPException(status_code=404, detail=f"Pipeline {pipeline_id} not found.")
+        return self.Response_get_pipeline_by_id(pipeline=self._pipelines[pipeline_id].to_BaseModel())

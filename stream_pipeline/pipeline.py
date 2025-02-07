@@ -5,8 +5,10 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 import time
 
+from pydantic import BaseModel
+
 from .logger import PipelineLogger, exception_to_error, format_json
-from .module_classes import Module
+from .module_classes import Module, ModuleModel
 import threading
 from typing import Callable, Dict, Generic, List, Optional, Sequence, Set, Tuple, TypeVar, Union
 from enum import Enum
@@ -61,6 +63,30 @@ PHASE_EXIT_TIME = Summary("phase_exit_time", "The time it took for the phase to 
 PHASE_ERROR_TIME = Summary("phase_error_time", "The time it took for the phase to finish with error status", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
 
 PHASE_PROCESSING_COUNTER = Gauge("phase_processing_counter", "The number of data packages being processed", ["pipeline_name", "pipeline_id", "pipeline_instance_id", "controller_name", "controller_id", "phase_name", "phase_id"])
+
+
+
+
+class PipelinePhaseModel(BaseModel):
+    phase_id: str
+    phase_name: str
+    modules: List[ModuleModel]
+
+class PipelineControllerModel(BaseModel):
+    controller_id: str
+    controller_name: str
+    mode: str
+    workers: int
+    phases: List[PipelinePhaseModel]
+
+class PipelineModel(BaseModel):
+    pipeline_id: str
+    pipeline_name: str
+    controllers: List[PipelineControllerModel]
+
+
+
+
 
 class ControllerMode(Enum):
     """
@@ -158,6 +184,25 @@ class PipelinePhase:
         )
         copied_phase._id = self._id
         return copied_phase
+    
+    def get_id(self) -> str:
+        with self._lock:
+            return self._id
+        
+    def get_name(self) -> str:
+        with self._lock:
+            return self._name
+        
+    def get_modules(self) -> List[Module]:
+        with self._lock:
+            return self._modules.copy()
+
+    def to_BaseModel(self) -> PipelinePhaseModel:
+        return PipelinePhaseModel(
+            phase_id=self.get_id(),
+            phase_name=self.get_name(),
+            modules=[module.to_BaseModel() for module in self.get_modules()]
+        )
 
 class OrderTracker:
     def __init__(self) -> None:
@@ -551,10 +596,35 @@ class PipelineController:
     def get_id(self) -> str:
         with self._lock:
             return self._id
+        
+    def get_name(self) -> str:
+        with self._lock:
+            return self._name
+        
+    def get_mode(self) -> ControllerMode:
+        with self._lock:
+            return self._mode
+        
+    def get_max_workers(self) -> int:
+        with self._lock:
+            return self._max_workers
+
+    def get_pahses(self) -> List[PipelinePhase]:
+        with self._lock:
+            return self._phases.copy()
 
     def set_order_tracker(self, order_tracker: OrderTracker) -> None:
         with self._lock:
             self._order_tracker = order_tracker
+
+    def to_BaseModel(self) -> PipelineControllerModel:
+        return PipelineControllerModel(
+                controller_id=self.get_id(),
+                controller_name=self.get_name(),
+                mode=controller_mode_to_str(self.get_mode()),
+                workers=self.get_max_workers(),
+                phases=[phase.to_BaseModel() for phase in self.get_pahses()]
+            )
 
 class PipelineInstance:
     def __init__(self) -> None:
@@ -723,6 +793,10 @@ class Pipeline(Generic[T]):
             self._api_remove_routes_for_pipeline(self.get_id())
             self._api_add_routes_for_pipeline(self.get_id())
 
+    def get_controllers(self) -> List[PipelineController]:
+        with self._lock:
+            return self._controllers.copy()
+
     def register_instance(self) -> str:
         ex = PipelineInstance()
         ex_id = ex.get_id()
@@ -779,3 +853,10 @@ class Pipeline(Generic[T]):
         dp.status = Status.RUNNING
         ex.execute(temp_phases, dp, callback, exit_callback, overflow_callback, outdated_callback, error_callback)
         return dp
+    
+    def to_BaseModel(self) -> PipelineModel:
+        return PipelineModel(
+            pipeline_id=self.get_id(),
+            pipeline_name=self.get_name(),
+            controllers=[controller.to_BaseModel() for controller in self.get_controllers()]
+        )
