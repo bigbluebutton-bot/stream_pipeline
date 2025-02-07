@@ -210,13 +210,13 @@ class Module(ABC):
         (even in nested containers) are replaced with newly created locks.
         """
         # If we already copied this object, return from memo
-        obj_id = id(obj)
+        obj_id: int = id(obj)
         if obj_id in memo:
             return memo[obj_id]
 
         # Handle lock objects explicitly
         if isinstance(obj, LockType):
-            new_obj = threading.Lock()
+            new_obj: Union[threading.Lock, threading.RLock] = threading.Lock()
             memo[obj_id] = new_obj
             return new_obj
         if isinstance(obj, RLockType):
@@ -226,7 +226,7 @@ class Module(ABC):
 
         # Handle lists by deep-copying each item
         if isinstance(obj, list):
-            new_list = []
+            new_list: list[Any] = []
             memo[obj_id] = new_list  # put in memo before recursion
             for item in obj:
                 new_list.append(self._deepcopy_lock_aware(item, memo))
@@ -234,7 +234,7 @@ class Module(ABC):
 
         # Handle dicts by deep-copying each value
         if isinstance(obj, dict):
-            new_dict = {}
+            new_dict: dict[Any, Any] = {}
             memo[obj_id] = new_dict  # put in memo before recursion
             for k, v in obj.items():
                 new_dict[k] = self._deepcopy_lock_aware(v, memo)
