@@ -664,6 +664,11 @@ class Pipeline(Generic[T]):
 
         self._lock = threading.Lock()
 
+        self._api_add_routes_for_pipeline: Optional[Callable[[str], None]] = None
+        self._api_add_routes_for_instance: Optional[Callable[[str, str], None]] = None
+        self._api_remove_routes_for_pipeline: Optional[Callable[[str], None]] = None
+        self._api_remove_routes_for_instance: Optional[Callable[[str, str], None]] = None
+
         self.set_phases(controllers_or_phases)
 
     def get_id(self) -> str:
@@ -673,6 +678,18 @@ class Pipeline(Generic[T]):
     def get_name(self) -> str:
         with self._lock:
             return self._name
+
+    def _set_api_callbacks(self,
+                            add_routes_for_pipeline: Optional[Callable[[str], None]] = None,
+                            add_routes_for_instance: Optional[Callable[[str, str], None]] = None,
+                            remove_routes_for_pipeline: Optional[Callable[[str], None]] = None,
+                            remove_routes_for_instance: Optional[Callable[[str, str], None]] = None
+                          ) -> None:
+        with self._lock:
+            self._api_add_routes_for_pipeline = add_routes_for_pipeline
+            self._api_add_routes_for_instance = add_routes_for_instance
+            self._api_remove_routes_for_pipeline = remove_routes_for_pipeline
+            self._api_remove_routes_for_instance = remove_routes_for_instance
 
     def set_phases(self, controllers_or_phases: Union[Sequence[Union[PipelineController, PipelinePhase]], None] = None) -> None:
         """
@@ -701,6 +718,11 @@ class Pipeline(Generic[T]):
                     self._instances_controllers[ex_id].append(copy_con)
                     copy_con.init_phases()
 
+        # api: remove alle exesting routes and add new ones
+        if self._api_remove_routes_for_pipeline is not None and self._api_add_routes_for_pipeline is not None:
+            self._api_remove_routes_for_pipeline(self.get_id())
+            self._api_add_routes_for_pipeline(self.get_id())
+
     def register_instance(self) -> str:
         ex = PipelineInstance()
         ex_id = ex.get_id()
@@ -711,6 +733,10 @@ class Pipeline(Generic[T]):
                 copy_con = con.__deepcopy__({})
                 self._instances_controllers[ex_id].append(copy_con)
                 copy_con.init_phases()
+
+        # Add route to API
+        if self._api_add_routes_for_instance:
+            self._api_add_routes_for_instance(self.get_id(), ex_id)
         return ex._id
     
     def get_instances(self) -> List[str]:
@@ -727,6 +753,10 @@ class Pipeline(Generic[T]):
             with self._lock:
                 del self._pipeline_instances[ex_id]
                 del self._instances_controllers[ex_id]
+
+            # Remove route from API
+            if self._api_remove_routes_for_instance:
+                self._api_remove_routes_for_instance(self.get_id(), ex_id)
 
     def execute(self, data: T, instance_id: str, callback: Callable[[DataPackage[T]], None], exit_callback: Optional[Callable[[DataPackage[T]], None]] = None, overflow_callback: Optional[Callable[[DataPackage[T]], None]] = None, outdated_callback: Optional[Callable[[DataPackage[T]], None]] = None, error_callback: Optional[Callable[[DataPackage[T]], None]] = None) -> DataPackage[T]:
         ex = self._get_instance(instance_id)
