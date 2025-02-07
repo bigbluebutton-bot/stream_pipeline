@@ -26,6 +26,16 @@ def add_route(
         return func
     return decorator
 
+def _get_api_annotation(cls: Any) -> Dict[Callable[..., Dict[str, Any]], Dict[str, Any]]:
+    result: Dict[Callable[..., Dict[str, Any]], Dict[str, Any]] = {}
+
+    for method_name in dir(cls):
+        method = getattr(cls, method_name)
+        if hasattr(method, '__dict__') and 'add_route' in method.__dict__.get('__annotations__', {}):
+            result[method] = method.__dict__['__annotations__']['add_route']
+
+    return result
+
 class APIService:
     def __init__(self, host: str, port: int, pipeline: Optional[Pipeline] = None):
         """
@@ -69,7 +79,7 @@ class APIService:
                 for phase in phases:
                     modules = phase._modules
                     for module in modules:
-                        routes = module._get_api_annotation()
+                        routes = _get_api_annotation(module)
                         for endpoint_func, route_info in routes.items():
                             module_id = module.get_id()
                             root_path = f"/api/{self.version}/pipelines/{pipeline_id}/instances/{instance_id}/modules/{module_id}"
@@ -141,3 +151,15 @@ class APIService:
         if self._uvicorn_server:
             self._uvicorn_server.should_exit = True
             print("FastAPI stopping...")
+
+
+    
+    @add_route(
+        sub_path="/pipelines",
+        methods=["GET"],
+        summary="Get all pipelines",
+        description="Return all pipelines currently registered with the service."
+    )
+    def get_pipelines(self) -> Dict[str, Pipeline]:
+        """Return all pipelines currently registered with the service."""
+        return self._pipelines
