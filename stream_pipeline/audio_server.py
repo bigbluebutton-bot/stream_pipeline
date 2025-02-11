@@ -6,12 +6,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Callable, Dict, Any, List, Optional, Tuple
 
+import aiortc
+import av
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 import numpy as np
 from pyogg import OpusEncoder, OggOpusWriter
-
-from ogg import OggS_Page
 
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import pyogg
@@ -38,31 +38,23 @@ class WebRTCConnection:
 
         logger.info(f"{self.id} Created WebRTCConnection.")
 
-        @self.pc.on("track")
-        def on_track(track: MediaStreamTrack) -> None:
+        @self.pc.on("track") # type: ignore
+        def on_track(track: aiortc.rtcrtpreceiver.RemoteStreamTrack) -> None:
             logger.info(f"{self.id} Track received: {track.kind}")
             # For audio tracks we want to both record and invoke the callback.
             if track.kind == "audio":
-                if self.on_webrtc_stream_callback:
-                    # spawn a task to process frames from track
-                    asyncio.create_task(self._consume_audio(track))
-                else:
-                    # If no callback was registered, use the original behavior.
-                    self.recorder.addTrack(track)
-
-                @track.on("ended")
-                async def on_ended() -> None:
-                    logger.info(f"{self.id} Audio track ended.")
+                asyncio.create_task(self._consume_audio(track))
             else:
                 # (For video or other track types you can add your own handling here.)
                 pass
 
 
-            @track.on("ended")
+            @track.on("ended") # type: ignore
             async def on_ended() -> None:
                 logger.info(f"{self.id} Audio track ended.")
+                asyncio.create_task(self.stop())
 
-        @self.pc.on("connectionstatechange")
+        @self.pc.on("connectionstatechange") # type: ignore
         def on_connectionstatechange() -> None:
             logger.info(f"{self.id} Connection state changed to {self.pc.connectionState}.")
             if self.pc.connectionState in ["failed", "closed"]:
@@ -77,7 +69,7 @@ class WebRTCConnection:
         self.on_webrtc_stream_callback = callback
         logger.info(f"{self.id} on_webrtc_stream callback set.")
 
-    async def _consume_audio(self, track):
+    async def _consume_audio(self, track: aiortc.rtcrtpreceiver.RemoteStreamTrack) -> None:
         """Continuously receives audio from the WebRTC track, encodes it to Ogg Opus, and sends it to the callback."""
         
         # Initialize Opus Encoder
@@ -94,7 +86,8 @@ class WebRTCConnection:
         self.running = True
         while self.running:
             try:
-                frame = await track.recv()  # Receive an AudioFrame
+                # Receive an AudioFrame
+                frame: av.audio.frame.AudioFrame = await track.recv()  # type: ignore
             except Exception as e:
                 continue
 
@@ -108,7 +101,8 @@ class WebRTCConnection:
             # If your writer accumulates pages, you can send the buffer's current value.
             latest_pages = buffer.getvalue()
             if latest_pages:
-                self.on_webrtc_stream_callback(latest_pages)  # Send latest pages to callback
+                if self.on_webrtc_stream_callback is not None:
+                    self.on_webrtc_stream_callback(latest_pages)  # Send latest pages to callback
 
                 # Reset the buffer for new data
                 buffer.seek(0)
@@ -274,13 +268,13 @@ class Connection:
         logger.debug(f"{self.id} get_status() called, returning '{status}'.")
         return status
 
-    def on_webrtc_stream(self, callback: Callable[[bytes], None]) -> None:
+    def on_webrtc_stream(self, callback: Callable[["Connection", bytes], None]) -> None:
         """
         Register a callback that will be called every time audio data (as bytes)
         is received from the WebRTC connection. For example, you might use the callback
         to store the bytes in an OGG opus file.
         """
-        self.webrtc.set_on_webrtc_stream(callback)
+        self.webrtc.set_on_webrtc_stream(lambda data: callback(self, data))
         logger.info(f"{self.id} on_webrtc_stream callback registered.")
 
     async def run(self, tocken: str, ws: WebSocket) -> None:
@@ -383,12 +377,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan)
 
-def recv_data(data: bytes) -> None:
-    page = OggS_Page(data)
-    logger.info(f"Received data: {page}")
+def recv_data(conn: Connection, data: bytes) -> None:
+    logger.info(f"Received data: {len(data)} bytes")
 
     # write to file
-    with open("out.ogg", "ab") as f:
+    conn_id = conn.get_id()
+    with open(f"out-{conn_id}.ogg", "ab") as f:
         f.write(data)
 
 
@@ -402,7 +396,8 @@ async def register() -> JSONResponse:
     con_id, tocken = con_manager.create_connection()
 
     con = con_manager.get_connection(con_id)
-    con.on_webrtc_stream(recv_data)
+    if con is not None:
+        con.on_webrtc_stream(recv_data)
 
     logger.info(f"Registered new connection: {con_id} with token: {tocken}")
     return JSONResponse({"connection_id": con_id, "token": tocken})
@@ -579,4 +574,4 @@ async def index() -> str:
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting uvicorn server on 0.0.0.0:8000")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("audio_server:app", host="0.0.0.0", port=8000, reload=True)
