@@ -28,108 +28,125 @@ class WebRTCConnection:
     """
     Encapsulates a single WebRTC connection.
     """
-    def __init__(self, stop_connection: Callable[[], None]) -> None:
-        self.id: str = f"Conn({uuid.uuid4()})"
+
+    def __init__(self, id: str, stop_connection: Callable[[], None]) -> None:
+        self.id: str = id
         self.pc: RTCPeerConnection = RTCPeerConnection()
         self._stop_connection: Callable[[], None] = stop_connection
 
         self.on_webrtc_stream_callback: Optional[Callable[[bytes], None]] = None
         self.running: bool = False
+        self._audio_thread: Optional[threading.Thread] = None
 
         logger.info(f"{self.id} Created WebRTCConnection.")
 
-        @self.pc.on("track") # type: ignore
+        @self.pc.on("track")  # type: ignore
         def on_track(track: aiortc.rtcrtpreceiver.RemoteStreamTrack) -> None:
             logger.info(f"{self.id} Track received: {track.kind}")
-            # For audio tracks we want to both record and invoke the callback.
             if track.kind == "audio":
-                asyncio.create_task(self._consume_audio(track))
+                # Start the audio-consumption loop in a dedicated thread.
+                self.start_audio_thread(track)
             else:
-                # (For video or other track types you can add your own handling here.)
+                # You can add handling for video or other track kinds here.
                 pass
 
-
-            @track.on("ended") # type: ignore
+            @track.on("ended")  # type: ignore
             async def on_ended() -> None:
                 logger.info(f"{self.id} Audio track ended.")
+                # Stop the connection when the track ends.
                 asyncio.create_task(self.stop())
 
-        @self.pc.on("connectionstatechange") # type: ignore
+        @self.pc.on("connectionstatechange")  # type: ignore
         def on_connectionstatechange() -> None:
             logger.info(f"{self.id} Connection state changed to {self.pc.connectionState}.")
             if self.pc.connectionState in ["failed", "closed"]:
-                logger.warning(f"{self.id} Connection state is {self.pc.connectionState}. Initiating stop().")
+                logger.warning(
+                    f"{self.id} Connection state is {self.pc.connectionState}. Initiating stop()."
+                )
                 asyncio.create_task(self.stop())
 
     def set_on_webrtc_stream(self, callback: Callable[[bytes], None]) -> None:
         """
         Set a callback to be called each time audio data (as bytes) is received.
-        (For example, the callback might write the bytes to an OGG opus file.)
         """
         self.on_webrtc_stream_callback = callback
         logger.info(f"{self.id} on_webrtc_stream callback set.")
 
+    def start_audio_thread(self, track: aiortc.rtcrtpreceiver.RemoteStreamTrack) -> None:
+        """
+        Start the audio-consumption loop in a new thread with its own event loop.
+        """
+        self.running = True
+        self._audio_thread = threading.Thread(
+            target=self._run_audio_loop, args=(track,), daemon=True
+        )
+        self._audio_thread.start()
+        logger.info(f"{self.id} Audio thread started.")
+
+    def _run_audio_loop(self, track: aiortc.rtcrtpreceiver.RemoteStreamTrack) -> None:
+        """
+        This method runs in a separate thread and creates its own event loop
+        to run the asynchronous _consume_audio coroutine.
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._consume_audio(track))
+        except Exception as e:
+            logger.error(f"{self.id} Error in audio loop: {e}")
+        finally:
+            loop.close()
+            logger.info(f"{self.id} Audio loop event loop closed.")
+
     async def _consume_audio(self, track: aiortc.rtcrtpreceiver.RemoteStreamTrack) -> None:
-        """Continuously receives audio from the WebRTC track, encodes it to Ogg Opus, and sends it to the callback."""
-        
-        # Initialize Opus Encoder
+        """
+        Continuously receives audio from the WebRTC track, encodes it, and sends
+        it to the callback. It uses a timeout with asyncio.wait_for() so that the
+        loop wakes up periodically.
+        """
+        # Initialize the Opus encoder.
         encoder = pyogg.OpusBufferedEncoder()
         encoder.set_application("audio")
         encoder.set_sampling_frequency(48000)
         encoder.set_channels(2)
         encoder.set_frame_size(20)  # 20ms frames
 
-        # Create one buffer and one OggOpusWriter for the entire connection
+        # Create an in-memory buffer and an OggOpus writer.
         buffer = io.BytesIO()
         writer = pyogg.OggOpusWriter(buffer, encoder)
 
-        self.running = True
-        while self.running:
-            try:
-                # Receive an AudioFrame
-                frame: av.audio.frame.AudioFrame = await track.recv()  # type: ignore
-            except Exception as e:
-                continue
+        try:
+            while self.running:
+                try:
+                    # Wait for a frame with a timeout so we can check self.running.
+                    frame: av.audio.frame.AudioFrame = await asyncio.wait_for(
+                        track.recv(), # type: ignore
+                        timeout=1.0
+                    )
+                except asyncio.TimeoutError:
+                    # Timeout reached; loop again to check self.running.
+                    continue
+                except Exception as e:
+                    logger.error(f"{self.id} Error receiving frame: {e}")
+                    continue
 
-            # Convert the frame to PCM and write it to the writer
-            pcm_array = frame.to_ndarray().astype(np.int16)  # Ensure int16 format
-            pcm_bytes = pcm_array.tobytes()
-            writer.write(memoryview(bytearray(pcm_bytes)))  # Write PCM data to encoder
+                # Convert the frame to PCM bytes.
+                pcm_array = frame.to_ndarray().astype(np.int16)
+                pcm_bytes = pcm_array.tobytes()
+                writer.write(memoryview(bytearray(pcm_bytes)))
 
-            # Instead of closing the writer every time (which resets the state),
-            # we simply check if the buffer has data ready to be sent.
-            # If your writer accumulates pages, you can send the buffer's current value.
-            latest_pages = buffer.getvalue()
-            if latest_pages:
-                if self.on_webrtc_stream_callback is not None:
-                    self.on_webrtc_stream_callback(latest_pages)  # Send latest pages to callback
-
-                # Reset the buffer for new data
-                buffer.seek(0)
-                buffer.truncate()
-        
-        # When finished streaming, close the writer
-        writer.close()
-
-
-
-    def get_status(self) -> str:
-        state: str = self.pc.connectionState
-        logger.debug(f"{self.id} get_status() called, returning '{state}'.")
-        if state == "new":
-            return "new"
-        elif state == "connecting":
-            return "connecting"
-        elif state == "connected":
-            return "connected"
-        elif state == "disconnected":
-            return "disconnected"
-        elif state == "failed":
-            return "failed"
-        elif state == "closed":
-            return "closed"
-        else:
-            return "unknown"
+                # If data is available, send it via the callback.
+                latest_pages = buffer.getvalue()
+                if latest_pages and self.on_webrtc_stream_callback is not None:
+                    self.on_webrtc_stream_callback(latest_pages)
+                    buffer.seek(0)
+                    buffer.truncate()
+        except asyncio.CancelledError:
+            logger.info(f"{self.id} Audio consumption cancelled.")
+            raise
+        finally:
+            writer.close()
+            logger.info(f"{self.id} Writer closed.")
 
     async def set_remote_description(self, offer: RTCSessionDescription) -> None:
         logger.info(f"{self.id} Setting remote description.")
@@ -143,36 +160,46 @@ class WebRTCConnection:
         return self.pc.localDescription
 
     async def stop(self) -> None:
-        """Clean up the connection by stopping the recorder and closing the RTCPeerConnection."""
+        """
+        Clean up the connection by stopping the audio thread (if running)
+        and closing the RTCPeerConnection.
+        """
+        logger.info(f"{self.id} Stopping connection.")
         self.running = False
+
+        # Wait for the audio thread to finish.
+        if self._audio_thread is not None:
+            self._audio_thread.join()
+            logger.info(f"{self.id} Audio thread joined.")
+
         try:
-            logger.info(f"{self.id} Closing peer connection.")
             await self.pc.close()
+            logger.info(f"{self.id} Peer connection closed.")
         except Exception as e:
             logger.error(f"{self.id} Error closing peer connection: {e}")
-        logger.info(f"{self.id} Cleaning up connection.")
 
-        if self.pc.connectionState == "closed":
-            return
-        self._stop_connection()
+        logger.info(f"{self.id} Cleaning up connection.")
+        if self.pc.connectionState != "closed":
+            self._stop_connection()
 
 
 class WSConnection:
     """
     Encapsulates a single WebSocket connection for signalling.
     """
-    def __init__(self, webrtc_connection: WebRTCConnection, stop_connection: Callable[[], None]) -> None:
+    def __init__(self, id: str, webrtc_connection: WebRTCConnection, stop_connection: Callable[[], None]) -> None:
+        self.id: str = id
         self.websocket: Optional[WebSocket] = None
         self.webrtc_connection: WebRTCConnection = webrtc_connection
         self.running: bool = False
         self._stop_connection: Callable[[], None] = stop_connection
         self._lock: asyncio.Lock = asyncio.Lock()
-        logger.info(f"{self.webrtc_connection.id} WSConnection created.")
+        logger.info(f"{self.id} WSConnection created.")
 
     async def set_ws(self, websocket: WebSocket) -> None:
         async with self._lock:
             self.websocket = websocket
-            logger.info(f"{self.webrtc_connection.id} WebSocket set.")
+            logger.info(f"{self.id} WebSocket set.")
 
     def get_status(self) -> str:
         if not self.websocket:
@@ -194,48 +221,48 @@ class WSConnection:
         if not self.websocket:
             raise Exception("No websocket: You first need to set the websocket connection with set_ws(WebSocket)")
         
-        logger.info(f"{self.webrtc_connection.id} WSConnection run loop started.")
+        logger.info(f"{self.id} WSConnection run loop started.")
         try:
             self.running = True
             # Handle further signalling messages.
             while self.running:
                 message: Dict[str, Any] = await self.websocket.receive_json()
-                logger.debug(f"{self.webrtc_connection.id} Received WS message: {message}")
+                logger.debug(f"{self.id} Received WS message: {message}")
                 action: Optional[str] = message.get("action")
                 if action == "offer":
                     sdp: Optional[str] = message.get("sdp")
                     type_: Optional[str] = message.get("type")
                     if not sdp or not type_:
                         error_msg = "Missing SDP parameters in offer"
-                        logger.error(f"{self.webrtc_connection.id} {error_msg}")
+                        logger.error(f"{self.id} {error_msg}")
                         await self.websocket.send_json({"error": error_msg})
                         continue
                     offer_desc = RTCSessionDescription(sdp=sdp, type=type_)
                     await self.webrtc_connection.set_remote_description(offer_desc)
                     answer_desc = await self.webrtc_connection.create_and_set_answer()
-                    logger.info(f"{self.webrtc_connection.id} Sending answer over WebSocket.")
+                    logger.info(f"{self.id} Sending answer over WebSocket.")
                     await self.websocket.send_json({
                         "action": "answer",
                         "sdp": answer_desc.sdp,
                         "type": answer_desc.type
                     })
                 elif action == "ping":
-                    logger.debug(f"{self.webrtc_connection.id} Received ping, sending pong.")
+                    logger.debug(f"{self.id} Received ping, sending pong.")
                     await self.websocket.send_json({"action": "pong"})
                 else:
                     error_msg = "Unknown action"
-                    logger.error(f"{self.webrtc_connection.id} {error_msg}: {action}")
+                    logger.error(f"{self.id} {error_msg}: {action}")
                     await self.websocket.send_json({"error": error_msg})
         except WebSocketDisconnect:
-            logger.info(f"{self.webrtc_connection.id} WebSocket disconnected.")
+            logger.info(f"{self.id} WebSocket disconnected.")
         except Exception as e:
-            logger.error(f"{self.webrtc_connection.id} WebSocket error: {e}")
+            logger.error(f"{self.id} WebSocket error: {e}")
 
     async def stop(self) -> None:
         if not self.running:
             return
         self.running = False
-        logger.info(f"{self.webrtc_connection.id} Stopping WSConnection.")
+        logger.info(f"{self.id} Stopping WSConnection.")
         if self.websocket:
             await self.websocket.close()
         self._stop_connection()
@@ -243,10 +270,10 @@ class WSConnection:
 
 class Connection:
     def __init__(self, remove_connection: Callable[[str], None]) -> None:
-        self.id: str = f"Conn({uuid.uuid4()})"
+        self.id: str = f"Con-{uuid.uuid4()}"
         self.tocken: str = str(uuid.uuid4())
-        self.webrtc: WebRTCConnection = WebRTCConnection(self.stop)
-        self.ws: WSConnection = WSConnection(self.webrtc, self.stop)
+        self.webrtc: WebRTCConnection = WebRTCConnection(self.id, self.stop)
+        self.ws: WSConnection = WSConnection(self.id, self.webrtc, self.stop)
         self._remove_connection: Callable[[str], None] = remove_connection
         self._lock: threading.Lock = threading.Lock()
         logger.info(f"{self.id} Connection instance created with token {self.tocken}.")
@@ -574,4 +601,4 @@ async def index() -> str:
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting uvicorn server on 0.0.0.0:8000")
-    uvicorn.run("audio_server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("audio_server:app", host="0.0.0.0", port=8000, reload=False)
